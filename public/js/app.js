@@ -50,6 +50,10 @@ const totalLearnedWords=()=>Object.keys(LS.learnedWords).length;
 function updateStreak(){const today=new Date().toDateString();if(LS.lastDay!==today){const y=new Date(Date.now()-86400000).toDateString();LS.streak=(LS.lastDay===y)?LS.streak+1:1;LS.lastDay=today;sLS();}}
 function markLetterWords(idx){const lt=LETTERS[idx];[{w:lt.word,phon:lt.wPhon,he:lt.wHe,em:lt.wEm},...lt.more.map(m=>({w:m.w,phon:m.phon,he:m.he,em:m.em}))].forEach(({w,phon,he,em})=>{if(!LS.learnedWords[w.toLowerCase()])LS.learnedWords[w.toLowerCase()]={w,phon,he,em,letterL:lt.L,ts:Date.now()};});}
 function markPhraseWords(phIdx){PHRASES[phIdx].items.forEach(item=>{const k=item.en.toLowerCase().replace(/[!?.]/g,'').trim();if(!LS.learnedWords[k])LS.learnedWords[k]={w:item.en,phon:item.phon,he:item.he,em:item.em,ts:Date.now()};});}
+// ══ WRITING FILTER ══
+function getLearnedLetterSet(){return new Set(LETTERS.filter((_,i)=>getDone(i)>0).map(l=>l.L.toUpperCase()));}
+function isWordWritable(word){const ll=getLearnedLetterSet();return[...word.toUpperCase()].every(ch=>/[A-Z]/.test(ch)?ll.has(ch):true);}
+function getWritableWords(lt){const all=[{w:lt.word,phon:lt.wPhon,he:lt.wHe,em:lt.wEm},...lt.more];const w=all.filter(x=>isWordWritable(x.w));return w.length?w:all.slice(0,1);}
 
 // ══ ACHIEVEMENTS ══
 function checkAchievements(){
@@ -66,7 +70,21 @@ function showXPFloat(n){const o=document.getElementById('xpFloat');if(o)o.remove
 function showCorrectBurst(){const o=document.createElement('div');o.className='correct-overlay';o.innerHTML='<div class="correct-burst">✅</div>';document.body.appendChild(o);setTimeout(()=>o.remove(),600);}
 
 // ══ UTILS ══
-function speak(txt){if(!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(txt);u.lang='en-US';u.rate=(LS.settings&&LS.settings.ttsSpeed)||0.72;speechSynthesis.speak(u);}
+async function speak(txt){
+  const rate=(LS.settings&&LS.settings.ttsSpeed)||0.72;
+  if(IS_NATIVE){
+    try{
+      const TTS=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.TextToSpeech;
+      if(TTS){await TTS.speak({text:txt,lang:'en-US',rate,pitch:1.0,volume:1.0});return;}
+    }catch(e){}
+  }
+  if(!window.speechSynthesis)return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(txt);u.lang='en-US';u.rate=rate;
+  const trySpeak=()=>{const vs=speechSynthesis.getVoices();if(vs.length){const v=vs.find(x=>x.lang.startsWith('en'));if(v)u.voice=v;}speechSynthesis.speak(u);};
+  if(speechSynthesis.getVoices().length>0)trySpeak();
+  else{speechSynthesis.addEventListener('voiceschanged',trySpeak,{once:true});setTimeout(trySpeak,800);}
+}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2300);}
 const shuf=a=>a.slice().sort(()=>Math.random()-0.5);
 function sw(id){document.querySelectorAll('.sc').forEach(s=>s.classList.remove('on'));document.getElementById(id).classList.add('on');}
@@ -103,6 +121,53 @@ function startDaily(){
 }
 let isDailyChallenge=false,dailySteps=[];
 
+// ══ GROUP REVIEW ══
+function startGroupReview(from,to){
+  const letters=LETTERS.slice(from,to).map((_,j)=>from+j);
+  let qs=[],qi=0,score=0;
+  letters.forEach(idx=>{
+    const lt=LETTERS[idx];
+    const dist=shuf(LETTERS.filter((_,j)=>j!==idx&&getDone(j)>0)).slice(0,3);
+    if(dist.length>=3){qs.push({lt,dist,type:'pic'});qs.push({lt,dist,type:'letter'});}
+  });
+  qs=shuf(qs).slice(0,8);
+  isPhrase=false;isDailyChallenge=false;curIdx=from;hearts=3;mistakes=0;stepDone=false;
+  document.getElementById('lTitle').textContent='📝 חזרה';
+  sw('scLesson');
+  const reviewSteps=qs.map(q=>q.type==='pic'?{type:'mcq_pic',lt:q.lt,dist:q.dist}:{type:'mcq_letter',lt:q.lt,dist:q.dist});
+  dailySteps=reviewSteps;isDailyChallenge=true;
+  const ri=Math.floor(from/5);
+  const _origAdv=advance;
+  window._reviewOnDone=()=>{LS.rc=LS.rc||{};LS.rc[ri]=(LS.rc[ri]||0)+1;sLS();showHome();toast('📝 חזרה הושלמה! +30 XP');LS.xp+=30;sLS();};
+  renderStep();
+}
+function startTopicLesson(topic){
+  sw('scLesson');document.getElementById('lTitle').textContent=topic.emoji+' '+topic.title;
+  hearts=3;mistakes=0;stepDone=false;isDailyChallenge=false;isPhrase=false;LS.tc=LS.tc||{};
+  const done=LS.tc[topic.id]||0;
+  const words=topic.words;
+  let step=done;
+  function renderTopicStep(){
+    document.getElementById('lStep').textContent=(step+1)+'/'+words.length;
+    document.getElementById('lProgFill').style.width=(step/words.length*100)+'%';
+    document.getElementById('lHearts').textContent='❤️'.repeat(hearts)+'🖤'.repeat(3-hearts);
+    if(step>=words.length){LS.tc[topic.id]=words.length;sLS();launchConfetti();sw('scComp');document.getElementById('cTrophy').textContent='🌍';document.getElementById('cTitle').textContent='!כל הכבוד';document.getElementById('cBig').textContent=topic.emoji;document.getElementById('cSmall').textContent=topic.title;document.getElementById('cWordBox').textContent=words.length+' מילים!';document.getElementById('cStars').textContent='⭐⭐⭐';document.getElementById('cXP').textContent='+'+words.length*5+' XP';LS.xp+=words.length*5;sLS();return;}
+    const w=words[step];const b=document.getElementById('lesBody');b.innerHTML='';
+    // Show word card + MCQ hebrew→english
+    const others=shuf(words.filter(x=>x!==w)).slice(0,3);
+    if(others.length<3){step++;LS.tc[topic.id]=step;sLS();renderTopicStep();return;}
+    b.appendChild(mk('div','card center anim-slideUp',`<div style="font-size:52px">${w.em}</div><div style="font-size:20px;font-weight:900;letter-spacing:1px">${w.en}</div><div style="font-size:13px;color:#a855f7">📢 ${w.phon}</div><div style="font-size:13px;color:#555">= ${w.he}</div>`));
+    speak(w.en);
+    const g=mk('div','mcq-opts anim-slideUp');
+    const opts=shuf([{w:w.he,ok:true},...others.map(x=>({w:x.he,ok:false}))]);
+    b.appendChild(mk('div','mcq-prompt','מה הפירוש?'));
+    opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.textContent=o.w;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);if(o.ok){bt.classList.add('ok');SFX.play('correct');LS.xp+=5;LS.learnedWords[w.en.toLowerCase()]={w:w.en,phon:w.phon,he:w.he,em:w.em,ts:Date.now()};step++;LS.tc[topic.id]=step;sLS();setTimeout(()=>{stepDone=false;renderTopicStep();},700);}else{bt.classList.add('no');g.querySelectorAll('button').forEach(x=>{if(x.textContent===w.he)x.classList.add('ok');});SFX.play('wrong');if(hearts>0){hearts--;document.getElementById('lHearts').textContent='❤️'.repeat(hearts)+'🖤'.repeat(3-hearts);}setTimeout(()=>{stepDone=false;},600);}};g.appendChild(bt);});
+    b.appendChild(g);
+  }
+  renderTopicStep();
+  document.getElementById('lProgFill').style.width='0%';
+}
+
 // ══ HOME ══
 function showHome(){
   sw('scHome');setNav('bnHome');
@@ -116,18 +181,21 @@ function showHome(){
 }
 function buildPath(){
   const w=document.getElementById('pathWrap');w.innerHTML='';let lastGrp=0,activeNode=null;
-  const subL=['📖','🎯','🎮','⚡'];
+  const subL=['📖','🎯','🎮','⚡','🌟'];
+  LS.rc=LS.rc||{};LS.tc=LS.tc||{};
   LETTERS.forEach((lt,i)=>{
     if(lt.grp!==lastGrp){lastGrp=lt.grp;const g=mk('div','grp-hdr');g.innerHTML=`<div class="grp-dot" style="background:${lt.gColor}"></div><div class="grp-title">${lt.gName}</div><div class="grp-line"></div>`;w.appendChild(g);const n=mk('div','path-nodes');n.id='grp'+lt.grp;w.appendChild(n);}
     const prog=getDone(i),unlocked=isUnlocked(i),full=prog>=4,review=full&&needsReview(i);
     const state=review?'n-review':full?'n-done':(unlocked&&prog>0)?'n-active':unlocked?'n-active':'n-locked';
     const nd=mk('div','node '+state);nd.id='node'+i;
-    const dots=prog>0&&prog<4?`<div style="display:flex;gap:3px;margin-top:3px">${[0,1,2,3].map(s=>`<div style="width:14px;height:4px;border-radius:2px;background:${s<prog?'#5838fa':'#ddd'}"></div>`).join('')}</div>`:'';
-    const sub=prog>0&&prog<4?`<div style="font-size:9px;color:#a855f7;margin-top:1px">${subL[prog]} שלב ${prog+1}/4</div>`:'';
-    nd.innerHTML=`<div class="node-circle"><div class="node-big">${lt.L}</div><div class="node-lbl">${lt.l}</div></div>${full?'<div class="node-stars">⭐⭐⭐⭐</div>':''}${dots}<div class="node-name">${lt.wEm} ${lt.word}</div><div class="node-phon">${lt.wPhon}</div>${sub}${review?'<div class="node-review">🔄</div>':''}${!unlocked?'<div class="node-lock">🔒</div>':''}`;
+    const dots=prog>0&&prog<5?`<div style="display:flex;gap:2px;margin-top:3px">${[0,1,2,3,4].map(s=>`<div style="width:11px;height:4px;border-radius:2px;background:${s<prog?'#5838fa':'#ddd'}"></div>`).join('')}</div>`:'';
+    const sub=prog>0&&prog<5?`<div style="font-size:9px;color:#a855f7;margin-top:1px">${subL[Math.min(4,prog)]} שלב ${prog+1}/5</div>`:'';
+    nd.innerHTML=`<div class="node-circle"><div class="node-big">${lt.L}</div><div class="node-lbl">${lt.l}</div></div>${full?'<div class="node-stars">⭐⭐⭐⭐⭐</div>':''}${dots}<div class="node-name">${lt.wEm} ${lt.word}</div><div class="node-phon">${lt.wPhon}</div>${sub}${review?'<div class="node-review">🔄</div>':''}${!unlocked?'<div class="node-lock">🔒</div>':''}`;
     if(unlocked){nd.onclick=()=>startLesson(i);if(!full&&!activeNode)activeNode=nd;}
     else nd.onclick=()=>toast('🔒 סיים: '+LETTERS[i-1].L);
     document.getElementById('grp'+lt.grp).appendChild(nd);
+    // Review node every 5 letters
+    if((i+1)%5===0){const ri=Math.floor(i/5);const rdone=LS.rc[ri]>0;const runlocked=LETTERS.slice(i-4,i+1).every((_,j)=>getDone(i-4+j)>=4);const rn=mk('div','node '+(rdone?'n-done':runlocked?'n-active':'n-locked'));rn.innerHTML=`<div class="node-circle" style="background:linear-gradient(135deg,#ffd600,#ff8f00)"><div class="node-big" style="font-size:20px">📝</div></div>${rdone?'<div class="node-stars">⭐</div>':''}<div class="node-name" style="color:#ff8f00;font-weight:800">חזרה ${ri+1}</div>${!runlocked?'<div class="node-lock">🔒</div>':''}`;if(runlocked){rn.onclick=()=>startGroupReview(i-4,i+1);if(!rdone&&!activeNode)activeNode=rn;}else rn.onclick=()=>toast('🔒 סיים 5 אותיות קודם');document.getElementById('grp'+lt.grp).appendChild(rn);}
   });
   // Phrases
   const ph=mk('div','grp-hdr');ph.innerHTML=`<div class="grp-dot" style="background:#e65100"></div><div class="grp-title">💬 ביטויים</div><div class="grp-line"></div>`;w.appendChild(ph);
@@ -138,6 +206,10 @@ function buildPath(){
   const sn=mk('div','path-nodes');
   STORIES.forEach((s,si)=>{const d=getSDone(s.id),u=isSUnlocked(si),st=d?'n-done':u?'n-active':'n-locked';const n=mk('div','node '+st);n.innerHTML=`<div class="node-circle" style="background:linear-gradient(135deg,#00897b,#004d40)"><div class="node-big">${s.emoji}</div></div>${d?'<div class="node-stars">⭐</div>':''}<div class="node-name">${s.titleHe}</div>${!u?'<div class="node-lock">🔒</div>':''}`;if(u){n.onclick=()=>startStory(si);if(!d&&!activeNode)activeNode=n;}else n.onclick=()=>toast('🔒 למד '+s.reqLetters+' אותיות');sn.appendChild(n);});
   w.appendChild(sn);
+  // Topics
+  const th=mk('div','grp-hdr');th.innerHTML=`<div class="grp-dot" style="background:#f57f17"></div><div class="grp-title">🌍 נושאים</div><div class="grp-line"></div>`;w.appendChild(th);
+  if(learnedCount()<5&&!LS.settings.devMode){w.appendChild(mk('div','',`<div style="text-align:center;padding:10px 16px;font-size:13px;color:#aaa;background:white;border-radius:16px;margin:4px 16px;border:1.5px dashed #ffe082;">🔒 למד ${5-learnedCount()} אותיות נוספות</div>`));}
+  else{const tn=mk('div','path-nodes');THEMES.forEach(topic=>{const d=LS.tc[topic.id]||0,u=learnedCount()>=5||LS.settings.devMode,st=d>=topic.words.length?'n-done':u?'n-active':'n-locked';const n=mk('div','node '+st);n.innerHTML=`<div class="node-circle" style="background:linear-gradient(135deg,${topic.color},${topic.color}aa)"><div class="node-big" style="font-size:26px">${topic.emoji}</div></div>${d>=topic.words.length?'<div class="node-stars">⭐</div>':d>0?`<div style="font-size:9px;color:#f57f17;margin-top:2px">${d}/${topic.words.length} מילים</div>':''}<div class="node-name">${topic.title}</div>${!u?'<div class="node-lock">🔒</div>':''}`;if(u){n.onclick=()=>startTopicLesson(topic);if(d<topic.words.length&&!activeNode)activeNode=n;}else n.onclick=()=>toast('🔒');tn.appendChild(n);});w.appendChild(tn);}
   if(activeNode)setTimeout(()=>activeNode.scrollIntoView({behavior:'smooth',block:'center'}),300);
 }
 
@@ -150,11 +222,12 @@ function getSteps(idx){
   const pool=others.length>=3?others:LETTERS.filter((_,i)=>i!==idx).slice(0,4);
   const dist=shuf(pool).slice(0,3);
   const allW=[{w:lt.word,phon:lt.wPhon,he:lt.wHe,em:lt.wEm},...lt.more];
-  const sub=Math.min(3,LS.lc[idx]||0);
+  const sub=Math.min(4,LS.lc[idx]||0);
   if(sub===0)return[{type:'intro',lt},{type:'listen',lt},{type:'write_letter',lt}];
   if(sub===1)return[{type:'mcq_pic',lt,dist},{type:'true_false',lt,allW},{type:'write_word',lt}];
   if(sub===2)return[{type:'scramble',lt},{type:'dictation',lt},{type:'catch_word',lt,dist,allW}];
-  return[{type:'speed_round',lt,dist,allW},{type:'mcq_letter',lt,dist},{type:'sentence',lt}];
+  if(sub===3)return[{type:'speed_round',lt,dist,allW},{type:'mcq_letter',lt,dist},{type:'sentence',lt}];
+  return[{type:'dictation',lt},{type:'mcq_pic',lt,dist},{type:'sentence',lt},{type:'write_word',lt}];
 }
 function startLesson(idx){isPhrase=false;isDailyChallenge=false;curIdx=idx;curStep=0;hearts=3;mistakes=0;stepDone=false;writeAttempts=0;LS.sessionMistakes=[];const lt=LETTERS[idx];const sub=Math.min(3,LS.lc[idx]||0);const subN=['📖 לומדים','🎯 מתרגלים','🎮 משחקים','⚡ אתגר'];document.getElementById('lTitle').textContent=lt.L+' — '+subN[sub]+' ('+(sub+1)+'/4)';sw('scLesson');SFX.init();renderStep();}
 function exitLesson(){if(confirm('לצאת?'))showHome();}
@@ -168,7 +241,7 @@ function loseHeart(){if(hearts>0){hearts--;SFX.play('wrong');}document.getElemen
   document.getElementById('goReview').onclick=()=>{LS.sessionMistakes=[];startReviewSession(uniq);};
   },600);}
 function advance(){
-  if(isDailyChallenge){LS.dailyDone=true;sLS();showHome();toast('⚡ אתגר יומי הושלם! +25 XP');LS.xp+=25;sLS();checkAchievements();return;}
+  if(isDailyChallenge){if(window._reviewOnDone){const fn=window._reviewOnDone;window._reviewOnDone=null;fn();return;}LS.dailyDone=true;sLS();showHome();toast('⚡ אתגר יומי הושלם! +25 XP');LS.xp+=25;sLS();checkAchievements();return;}
   const steps=isPhrase?getPhraseSteps(curPhraseIdx):getSteps(curIdx);
   curStep++;stepDone=false;writeAttempts=0;
   if(curStep>=steps.length)finishLesson();else renderStep();
@@ -199,9 +272,9 @@ function rWriteLetter({lt},b){stepDone=false;writeAttempts=0;const c=mk('div','c
 // ── MCQ Pic ──
 function rMcqPic({lt,dist},b){curWordContext=lt.word;b.appendChild(mk('div','mcq-prompt anim-slideUp','מה מתחיל ב-<b>'+lt.L+'</b>?'));const opts=shuf([{w:lt.word,phon:lt.wPhon,he:lt.wHe,em:lt.wEm,ok:true},...dist.map(d=>({w:d.word,phon:d.wPhon,he:d.wHe,em:d.wEm,ok:false}))]);const g=mk('div','mcq-opts anim-slideUp');opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.innerHTML=`<span style="font-size:28px">${o.em}</span><span class="opt-en">${o.w}</span><span class="opt-phon">${o.phon}</span>`;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);if(o.ok){bt.classList.add('ok');setFb('✅ '+lt.word+' = '+lt.L,'ok');enableAct('המשך ←',advance);onCorrect(10);speak(lt.word);}else{bt.classList.add('no');g.querySelectorAll('button').forEach(x=>{if(x.querySelector('.opt-en').textContent===lt.word)x.classList.add('ok');});setFb('❌ '+lt.word+' = '+lt.L,'no');enableAct('המשך ←',advance);onWrong();}};g.appendChild(bt);});b.appendChild(g);addFb(b);addActBtn(b,'בחר',false,null);}
 // ── Dictation ──
-function rDictation({lt},b){stepDone=false;writeAttempts=0;const all=[{w:lt.word,phon:lt.wPhon,he:lt.wHe,em:lt.wEm},...lt.more];const t=all[Math.floor(Math.random()*all.length)];const c=mk('div','card center anim-slideUp');c.innerHTML=`<div class="mcq-prompt">🎧 שמע וכתוב</div><div style="font-size:64px;cursor:pointer" id="dS">🔊</div><div style="font-size:12px;color:#888">מתחיל ב-<b>${lt.L}</b></div><div class="write-input-row"><input class="write-input" id="dI" placeholder="?" autocomplete="off" style="font-size:18px;letter-spacing:3px;"/><button class="write-check-btn" id="dC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);document.getElementById('dS').onclick=()=>{speak(t.w);SFX.play('click');};const inp=document.getElementById('dI');document.getElementById('dC').onclick=()=>{if(!inp.value)return;if(inp.value.toLowerCase()===t.w.toLowerCase()){inp.classList.add('ok-inp');setFb('✅ '+t.w+' = '+t.he,'ok');LS.writes++;onCorrect(15);enableAct('המשך ←',advance);stepDone=true;}else{writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';inp.focus();},500);if(writeAttempts>=3){setFb('💡 '+t.w,'no');enableAct('המשך ←',advance);onWrong();}}};setTimeout(()=>{speak(t.w);inp.focus();},300);addFb(b);addActBtn(b,'כתוב',false,null);}
+function rDictation({lt},b){stepDone=false;writeAttempts=0;const pool=getWritableWords(lt);const t=pool[Math.floor(Math.random()*pool.length)];const c=mk('div','card center anim-slideUp');c.innerHTML=`<div class="mcq-prompt">🎧 שמע וכתוב</div><div style="font-size:64px;cursor:pointer" id="dS">🔊</div><div style="font-size:12px;color:#888">מתחיל ב-<b>${lt.L}</b></div><div class="write-input-row"><input class="write-input" id="dI" placeholder="?" autocomplete="off" style="font-size:18px;letter-spacing:3px;"/><button class="write-check-btn" id="dC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);document.getElementById('dS').onclick=()=>{speak(t.w);SFX.play('click');};const inp=document.getElementById('dI');document.getElementById('dC').onclick=()=>{if(!inp.value)return;if(inp.value.toLowerCase()===t.w.toLowerCase()){inp.classList.add('ok-inp');setFb('✅ '+t.w+' = '+t.he,'ok');LS.writes++;onCorrect(15);enableAct('המשך ←',advance);stepDone=true;}else{writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';inp.focus();},500);if(writeAttempts>=3){setFb('💡 '+t.w,'no');enableAct('המשך ←',advance);onWrong();}}};setTimeout(()=>{speak(t.w);inp.focus();},300);addFb(b);addActBtn(b,'כתוב',false,null);}
 // ── Write Word ──
-function rWriteWord({lt},b){stepDone=false;writeAttempts=0;const c=mk('div','card center anim-slideUp');c.innerHTML=`<div class="mcq-prompt">✍️ כתוב:</div><div style="font-size:56px">${lt.wEm}</div><div style="font-size:14px;color:#a855f7">📢 ${lt.wPhon} = ${lt.wHe}</div><div id="wS" class="write-letter-row"></div><div class="write-input-row"><input class="write-input" id="wW" placeholder="${lt.word}" autocomplete="off" style="font-size:18px;letter-spacing:4px;"/><button class="write-check-btn" id="wWC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);rSlots(lt.word,'');const inp=document.getElementById('wW');inp.oninput=()=>{rSlots(lt.word,inp.value);if(inp.value.toLowerCase()===lt.word.toLowerCase()&&!stepDone){inp.classList.add('ok-inp');setFb('✅ '+lt.word,'ok');LS.writes++;onCorrect(10);enableAct('המשך ←',advance);stepDone=true;}};document.getElementById('wWC').onclick=()=>{if(!inp.value)return;if(stepDone)return;writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts+' — '+lt.word;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';rSlots(lt.word,'');inp.focus();},700);if(writeAttempts>=3){setFb('💡 '+lt.word,'no');enableAct('המשך ←',advance);onWrong();}};setTimeout(()=>inp.focus(),200);addFb(b);addActBtn(b,'כתוב',false,null);}
+function rWriteWord({lt},b){stepDone=false;writeAttempts=0;const c=mk('div','card center anim-slideUp');c.innerHTML=`<div class="mcq-prompt">✍️ כתוב באנגלית:</div><div style="font-size:48px;filter:blur(7px);cursor:pointer;transition:filter .3s" id="wHintEm" onclick="this.style.filter='none'" title="לחץ לרמז">${lt.wEm}</div><div style="font-size:10px;color:#bbb;margin-bottom:4px">👆 לחץ לרמז</div><div style="font-size:13px;color:#a855f7">📢 ${lt.wPhon}</div><div id="wS" class="write-letter-row"></div><div class="write-input-row"><input class="write-input" id="wW" placeholder="${lt.word}" autocomplete="off" style="font-size:18px;letter-spacing:4px;"/><button class="write-check-btn" id="wWC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);rSlots(lt.word,'');const inp=document.getElementById('wW');inp.oninput=()=>{rSlots(lt.word,inp.value);if(inp.value.toLowerCase()===lt.word.toLowerCase()&&!stepDone){inp.classList.add('ok-inp');setFb('✅ '+lt.word,'ok');LS.writes++;onCorrect(10);enableAct('המשך ←',advance);stepDone=true;}};document.getElementById('wWC').onclick=()=>{if(!inp.value)return;if(stepDone)return;writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts+' — '+lt.word;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';rSlots(lt.word,'');inp.focus();},700);if(writeAttempts>=3){setFb('💡 '+lt.word,'no');enableAct('המשך ←',advance);onWrong();}};setTimeout(()=>inp.focus(),200);addFb(b);addActBtn(b,'כתוב',false,null);}
 function rSlots(w,t){const c=document.getElementById('wS');if(!c)return;c.innerHTML='';w.split('').forEach((ch,i)=>{const s=mk('div','write-letter-slot');const v=t[i]||'';if(v){if(v.toLowerCase()===ch.toLowerCase()){s.classList.add('done');s.textContent=ch;}else{s.classList.add('wrong');s.textContent=v;}}else if(i===t.length){s.classList.add('cur');s.textContent='_';}else s.textContent='_';c.appendChild(s);});}
 // ── MCQ Letter ──
 function rMcqLetter({lt,dist},b){const c=mk('div','card center anim-slideUp');c.innerHTML=`<div class="mcq-prompt">מה האות של:</div><div class="mcq-disp"><div class="mcq-disp-em">${lt.wEm}</div><div class="mcq-disp-word">${lt.word}</div><div class="mcq-disp-phon">${lt.wPhon}</div></div>`;b.appendChild(c);const opts=shuf([{L:lt.L,sound:lt.sound,ok:true},...dist.map(d=>({L:d.L,sound:d.sound,ok:false}))]);const g=mk('div','mcq-opts anim-slideUp');opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.innerHTML=`<span class="opt-letter">${o.L}</span><span class="opt-phon">"${o.sound}"</span>`;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);if(o.ok){bt.classList.add('ok');setFb('✅ '+lt.L,'ok');enableAct('המשך ←',advance);onCorrect(10);speak(lt.word);}else{bt.classList.add('no');g.querySelectorAll('button').forEach(x=>{if(x.querySelector('.opt-letter').textContent===lt.L)x.classList.add('ok');});setFb('❌ '+lt.L,'no');enableAct('המשך ←',advance);onWrong();}};g.appendChild(bt);});b.appendChild(g);addFb(b);addActBtn(b,'בחר',false,null);}
@@ -451,7 +524,7 @@ function toggleBilingual(){
 }
 // Override stopBil to toggle buttons
 const _origStopBil=stopBil;
-function stopBil(){bilPlaying=false;speechSynthesis.cancel();const pb=document.getElementById('bilPlayBtn'),sb=document.getElementById('bilStopBtn');if(pb)pb.style.display='';if(sb)sb.style.display='none';if(window._bilEls)window._bilEls.forEach(e=>e.classList.remove('active'));}
+function stopBil(){bilPlaying=false;const TTS=IS_NATIVE&&window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.TextToSpeech;if(TTS)TTS.stop().catch(()=>{});else if(window.speechSynthesis)speechSynthesis.cancel();const pb=document.getElementById('bilPlayBtn'),sb=document.getElementById('bilStopBtn');if(pb)pb.style.display='';if(sb)sb.style.display='none';if(window._bilEls)window._bilEls.forEach(e=>e.classList.remove('active'));}
 function rStoryQuiz({story,qIdx},b,steps){
   const q=story.questions[qIdx];stepDone=false;
   const c=mk('div','story-q anim-slideUp');c.innerHTML=`<div class="mcq-prompt">${q.qHe}</div><div style="font-size:13px;color:#00897b;text-align:center;margin-top:4px;direction:ltr">${q.q}</div>`;b.appendChild(c);
@@ -499,14 +572,14 @@ function setPracTab(t){pracTab=t;for(let i=0;i<=10;i++){const el=document.getEle
   if(t===7){showPracScramble();return;}if(t===8){showPracTF();return;}if(t===9){showPracCatch();return;}if(t===10){showPracSpeed();return;}
   buildPrac();renderPracQ();}
 function showPractice(){sw('scPrac');setNav('bnPrac');const started=LETTERS.filter((_,i)=>getDone(i)>0).length;document.getElementById('pracSub').textContent=learnedCount()+' אותיות · '+totalLearnedWords()+' מילים';if(started<2){document.getElementById('pracBody').innerHTML='<div style="text-align:center;padding:24px;font-size:48px">🔒</div><div style="text-align:center;font-weight:700;color:#5838fa">למד 2 אותיות קודם!</div>';return;}buildPrac();renderPracQ();}
-function buildPrac(){const l=LETTERS.filter((_,i)=>getDone(i)>0);pracQ=[];pracIdx=0;pracRight=0;pracWrong=0;if(l.length<2)return;if(pracTab===0)for(let i=0;i<10;i++){const lt=l[Math.floor(Math.random()*l.length)];const pool=l.filter(x=>x.L!==lt.L);if(pool.length<1)continue;const d=shuf(pool).slice(0,3);pracQ.push({lt,type:i%2?'letter':'pic',dist:d});}else if(pracTab===1)for(let i=0;i<8;i++){const lt=l[Math.floor(Math.random()*l.length)];pracQ.push({lt,type:i%2?'write_w':'write_l'});}else if(pracTab===2)for(let i=0;i<8;i++){const lt=l[Math.floor(Math.random()*l.length)];pracQ.push({lt,type:'dict'});}else for(let i=0;i<8;i++){const p=l.filter(x=>x.sentence);if(!p.length)continue;const lt=p[Math.floor(Math.random()*p.length)];pracQ.push({lt,type:'sent'});}}
+function buildPrac(){const l=LETTERS.filter((_,i)=>getDone(i)>0);pracQ=[];pracIdx=0;pracRight=0;pracWrong=0;if(l.length<2)return;if(pracTab===0)for(let i=0;i<10;i++){const lt=l[Math.floor(Math.random()*l.length)];const pool=l.filter(x=>x.L!==lt.L);if(pool.length<1)continue;const d=shuf(pool).slice(0,3);pracQ.push({lt,type:i%2?'letter':'pic',dist:d});}else if(pracTab===1)for(let i=0;i<8;i++){const wl=l.filter(x=>isWordWritable(x.word));if(!wl.length)continue;const lt=wl[Math.floor(Math.random()*wl.length)];pracQ.push({lt,type:i%2?'write_w':'write_l'});}else if(pracTab===2)for(let i=0;i<8;i++){const wl=l.filter(x=>getWritableWords(x).length>0);if(!wl.length)continue;const lt=wl[Math.floor(Math.random()*wl.length)];pracQ.push({lt,type:'dict'});}else for(let i=0;i<8;i++){const p=l.filter(x=>x.sentence);if(!p.length)continue;const lt=p[Math.floor(Math.random()*p.length)];pracQ.push({lt,type:'sent'});}}
 function renderPracQ(){const b=document.getElementById('pracBody');b.innerHTML='';if(pracIdx>=pracQ.length){b.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">${pracRight/pracQ.length>=.8?'🏆':'💪'}</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin-top:8px">${pracRight}/${pracQ.length} (${Math.round(pracRight/pracQ.length*100)}%)</div><button class="act-btn go" onclick="buildPrac();renderPracQ()" style="margin-top:12px">שוב 🔄</button></div>`;return;}stepDone=false;writeAttempts=0;const q=pracQ[pracIdx];b.appendChild(mk('div','prac-score anim-slideDown',`<div class="psc"><div class="psc-n g">${pracRight}</div><div class="psc-l">✓</div></div><div class="psc"><div class="psc-n gr">${pracIdx}/${pracQ.length}</div><div class="psc-l">#</div></div><div class="psc"><div class="psc-n r">${pracWrong}</div><div class="psc-l">✗</div></div>`));if(q.type==='pic')pPic(q,b);else if(q.type==='letter')pLetter(q,b);else if(q.type==='write_l')pWriteL(q,b);else if(q.type==='write_w')pWriteW(q,b);else if(q.type==='dict')pDict(q,b);else pSentP(q,b);}
 function pAns(ok,b){if(ok){pracRight++;showCorrectBurst();SFX.play('correct');LS.xp+=5;sLS();}else{pracWrong++;SFX.play('wrong');}pracIdx++;const nb=mk('button','act-btn go anim-slideUp','הבאה ←');nb.onclick=renderPracQ;b.appendChild(nb);}
 function pPic({lt,dist},b){if(!lt||!dist||!dist.length){pracIdx++;renderPracQ();return;}b.appendChild(mk('div','mcq-prompt anim-slideUp','מה ב-<b>'+lt.L+'</b>?'));const opts=shuf([{w:lt.word,em:lt.wEm,ok:true},...dist.map(d=>({w:d.word,em:d.wEm,ok:false}))]);const g=mk('div','mcq-opts anim-slideUp');opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.innerHTML=`<span style="font-size:26px">${o.em}</span><span class="opt-en">${o.w}</span>`;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);bt.classList.add(o.ok?'ok':'no');speak(lt.word);pAns(o.ok,b);};g.appendChild(bt);});b.appendChild(g);}
 function pLetter({lt,dist},b){if(!lt||!dist||!dist.length){pracIdx++;renderPracQ();return;}b.appendChild(mk('div','card center anim-slideUp',`<div style="font-size:48px">${lt.wEm}</div><div style="font-size:18px;font-weight:700">${lt.word}</div>`));const opts=shuf([{L:lt.L,ok:true},...dist.map(d=>({L:d.L,ok:false}))]);const g=mk('div','mcq-opts anim-slideUp');opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.innerHTML=`<span class="opt-letter">${o.L}</span>`;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);bt.classList.add(o.ok?'ok':'no');pAns(o.ok,b);};g.appendChild(bt);});b.appendChild(g);}
 function pWriteL({lt},b){stepDone=false;writeAttempts=0;const c=mk('div','card center anim-slideUp');c.innerHTML=`<div class="write-target-big" id="pT">${lt.L}</div><div class="write-input-row"><input class="write-input" id="pI" maxlength="1" placeholder="${lt.L}" autocomplete="off"/></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);document.getElementById('pT').onclick=()=>speak(lt.L);const inp=document.getElementById('pI');inp.oninput=()=>{if(inp.value.toUpperCase()===lt.L.toUpperCase()){inp.classList.add('ok-inp');LS.writes++;sLS();pAns(true,b);}else if(inp.value){writeAttempts++;if(writeAttempts>=3){inp.disabled=true;pAns(false,b);}else{inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';},500);}}};setTimeout(()=>inp.focus(),100);}
-function pWriteW({lt},b){stepDone=false;writeAttempts=0;const c=mk('div','card center anim-slideUp');c.innerHTML=`<div style="font-size:50px">${lt.wEm}</div><div style="font-size:13px;color:#a855f7">${lt.wPhon}</div><div class="write-input-row"><input class="write-input" id="pI" placeholder="${lt.word}" autocomplete="off" style="font-size:16px;letter-spacing:3px"/><button class="write-check-btn" id="pC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);const inp=document.getElementById('pI');document.getElementById('pC').onclick=()=>{if(!inp.value)return;if(inp.value.toLowerCase()===lt.word.toLowerCase()){inp.classList.add('ok-inp');LS.writes++;sLS();pAns(true,b);}else{writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';inp.focus();},600);if(writeAttempts>=3)pAns(false,b);}};setTimeout(()=>inp.focus(),100);}
-function pDict({lt},b){if(!lt||!lt.more){pracIdx++;renderPracQ();return;}stepDone=false;writeAttempts=0;const all=[{w:lt.word},...lt.more],t=all[Math.floor(Math.random()*all.length)];const c=mk('div','card center anim-slideUp');c.innerHTML=`<div style="font-size:64px;cursor:pointer" id="pS">🔊</div><div style="font-size:12px;color:#888">שמע וכתוב</div><div class="write-input-row"><input class="write-input" id="pI" placeholder="?" autocomplete="off" style="font-size:16px;letter-spacing:3px"/><button class="write-check-btn" id="pC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);document.getElementById('pS').onclick=()=>{speak(t.w);SFX.play('click');};const inp=document.getElementById('pI');document.getElementById('pC').onclick=()=>{if(!inp.value)return;if(inp.value.toLowerCase()===t.w.toLowerCase()){inp.classList.add('ok-inp');LS.writes++;sLS();pAns(true,b);}else{writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts+' — '+t.w;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';inp.focus();},600);if(writeAttempts>=3)pAns(false,b);}};setTimeout(()=>{speak(t.w);inp.focus();},200);}
+function pWriteW({lt},b){stepDone=false;writeAttempts=0;const c=mk('div','card center anim-slideUp');c.innerHTML=`<div style="font-size:13px;color:#a855f7;margin-bottom:6px">${lt.wPhon}</div><div style="font-size:32px;filter:blur(6px);cursor:pointer;transition:filter .3s;margin-bottom:4px" onclick="this.style.filter='none'">${lt.wEm}</div><div style="font-size:10px;color:#bbb;margin-bottom:8px">👆 לחץ לרמז</div><div class="write-input-row"><input class="write-input" id="pI" placeholder="${lt.word}" autocomplete="off" style="font-size:16px;letter-spacing:3px"/><button class="write-check-btn" id="pC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);const inp=document.getElementById('pI');document.getElementById('pC').onclick=()=>{if(!inp.value)return;if(inp.value.toLowerCase()===lt.word.toLowerCase()){inp.classList.add('ok-inp');LS.writes++;sLS();pAns(true,b);}else{writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';inp.focus();},600);if(writeAttempts>=3)pAns(false,b);}};setTimeout(()=>inp.focus(),100);}
+function pDict({lt},b){if(!lt||!lt.more){pracIdx++;renderPracQ();return;}stepDone=false;writeAttempts=0;const all=getWritableWords(lt);const t=all[Math.floor(Math.random()*all.length)];const c=mk('div','card center anim-slideUp');c.innerHTML=`<div style="font-size:64px;cursor:pointer" id="pS">🔊</div><div style="font-size:12px;color:#888">שמע וכתוב</div><div class="write-input-row"><input class="write-input" id="pI" placeholder="?" autocomplete="off" style="font-size:16px;letter-spacing:3px"/><button class="write-check-btn" id="pC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);document.getElementById('pS').onclick=()=>{speak(t.w);SFX.play('click');};const inp=document.getElementById('pI');document.getElementById('pC').onclick=()=>{if(!inp.value)return;if(inp.value.toLowerCase()===t.w.toLowerCase()){inp.classList.add('ok-inp');LS.writes++;sLS();pAns(true,b);}else{writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts+' — '+t.w;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';inp.focus();},600);if(writeAttempts>=3)pAns(false,b);}};setTimeout(()=>{speak(t.w);inp.focus();},200);}
 function pSentP({lt},b){if(!lt||!lt.sentence){pracIdx++;renderPracQ();return;}stepDone=false;const s=lt.sentence;const c=mk('div','sent-card anim-slideUp');c.appendChild(mk('div','sent-label','💬 השלם:'));const parts=s.tmpl.split('___'),sd=mk('div','sent-full');sd.appendChild(document.createTextNode(parts[0]));const bl=mk('span','sent-blank','___');bl.id='sPB';sd.appendChild(bl);if(parts[1])sd.appendChild(document.createTextNode(parts[1]));c.appendChild(sd);const ch=mk('div','sent-choices');shuf(s.choices).forEach(w=>{const bt=mk('button','sent-choice',w);bt.onclick=()=>{if(stepDone)return;const ok=w===s.answer;stepDone=true;bt.classList.add(ok?'ok':'no');if(ok)document.getElementById('sPB').textContent=w;speak(s.answer);pAns(ok,b);};ch.appendChild(bt);});c.appendChild(ch);b.appendChild(c);}
 
 // ══ MEMORY GAME ══
@@ -588,7 +661,27 @@ function maybeShowLangTip(text,container){const shown=LS.tipsShown||[];for(const
 // ══ BILINGUAL TTS ══
 let bilQ=[],bilPlaying=false,bilIdx=0;
 function playBilingual(lines,lineEls){if(bilPlaying){stopBil();return;}bilQ=lines;bilIdx=0;bilPlaying=true;playBilNext(lineEls);}
-function playBilNext(els){if(!bilPlaying||bilIdx>=bilQ.length){stopBil();return;}const l=bilQ[bilIdx];els.forEach((e,i)=>{e.classList.toggle('active',i===bilIdx);});const en=new SpeechSynthesisUtterance(l.en);en.lang='en-US';en.rate=(LS.settings&&LS.settings.ttsSpeed)||0.72;en.onend=()=>{setTimeout(()=>{const he=new SpeechSynthesisUtterance(l.he);he.lang='he-IL';he.rate=0.85;he.onend=()=>{bilIdx++;setTimeout(()=>playBilNext(els),400);};speechSynthesis.speak(he);},300);};speechSynthesis.speak(en);}
+async function playBilNext(els){
+  if(!bilPlaying||bilIdx>=bilQ.length){stopBil();return;}
+  const l=bilQ[bilIdx];els.forEach((e,i)=>{e.classList.toggle('active',i===bilIdx);});
+  const rate=(LS.settings&&LS.settings.ttsSpeed)||0.72;
+  const TTS=IS_NATIVE&&window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.TextToSpeech;
+  if(TTS){
+    try{
+      await TTS.speak({text:l.en,lang:'en-US',rate});
+      if(!bilPlaying)return;
+      await new Promise(r=>setTimeout(r,300));
+      await TTS.speak({text:l.he,lang:'he-IL',rate:0.85});
+      if(!bilPlaying)return;
+      bilIdx++;await new Promise(r=>setTimeout(r,400));
+      playBilNext(els);return;
+    }catch(e){}
+  }
+  if(!window.speechSynthesis)return;
+  const en=new SpeechSynthesisUtterance(l.en);en.lang='en-US';en.rate=rate;
+  en.onend=()=>{setTimeout(()=>{const he=new SpeechSynthesisUtterance(l.he);he.lang='he-IL';he.rate=0.85;he.onend=()=>{bilIdx++;setTimeout(()=>playBilNext(els),400);};speechSynthesis.speak(he);},300);};
+  speechSynthesis.speak(en);
+}
 
 // ══ FLASHCARDS TAB ══
 function showFlashcards(){
