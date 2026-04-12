@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>אנגלית בכיף 🇺🇸</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="app">
+<div class="sc" id="scProf"><div class="prof-bg"><div><div class="prof-logo-flag">🇺🇸</div><div class="prof-logo" style="margin-top:4px">אנגלית בכיף</div></div><div class="prof-sub">לחץ על הפרופיל שלך כדי להתחיל!</div><div class="prof-grid" id="profGrid"></div></div></div>
+<div class="sc" id="scHome">
+  <div class="home-hdr"><div class="home-top"><div class="home-logo">🇺🇸 אנגלית בכיף</div><div class="home-top-btns"><div class="home-gear" onclick="showSettings()">⚙️</div><div class="home-user" onclick="switchProfile()"><div class="home-user-av" id="hAv">😊</div><div class="home-user-name" id="hName">?</div></div></div></div><div class="xp-bar-wrap"><div class="xp-labels"><span id="hLvl">רמה 1</span><span id="hXpTxt">0/200 XP</span></div><div class="xp-track"><div class="xp-fill" id="hXpFill" style="width:0%"></div></div></div><div class="stats-row"><div class="stat-pill">🔥 <span id="hStreak">0</span></div><div class="stat-pill">📖 <span id="hLearned">0</span></div><div class="stat-pill">📝 <span id="hWords">0</span></div><div class="stat-pill">⭐ <span id="hStars">0</span></div></div></div>
+  <div id="dailyBanner"></div>
+  <div class="path-wrap" id="pathWrap" style="margin-top:14px;"></div>
+  <div class="bnav"><div class="bn on" id="bnHome" onclick="showHome()"><div class="bn-icon">🏠</div>בית</div><div class="bn" id="bnPrac" onclick="showPractice()"><div class="bn-icon">🏋️</div>תרגול</div><div class="bn" id="bnDict" onclick="showDict()"><div class="bn-icon">📖</div>מילון</div><div class="bn" id="bnProg" onclick="showProgress()"><div class="bn-icon">📊</div>דוח</div></div>
+</div>
+<div class="sc" id="scLesson"><div class="les-hdr"><button class="exit-btn" onclick="exitLesson()">✕</button><div class="les-info"><div class="les-title" id="lTitle">שיעור</div><div class="les-step" id="lStep"></div></div><div class="hearts" id="lHearts">❤️❤️❤️</div></div><div class="prog-bar-wrap"><div class="prog-bar"><div class="prog-fill" id="lProgFill" style="width:0%"></div></div></div><div class="les-body" id="lesBody"></div></div>
+<div class="sc" id="scGameOver"><div class="gameover-wrap"><div class="gameover-emoji">😅</div><div class="gameover-title">!נגמרו הלבבות</div><div class="gameover-sub">בוא נחזור על המילים שהתבלבלת בהן 💪</div><div class="review-list" id="reviewList"></div><div class="gameover-btns"><button class="gameover-btn retry" id="goRetry">נסה שוב! 🔄</button><button class="gameover-btn retry" id="goReview" style="background:linear-gradient(135deg,#5838fa,#7c3aed);box-shadow:0 5px 0 #3a24c4">📝 חזרה על טעויות</button><button class="gameover-btn quit" onclick="showHome()">חזור למסלול</button></div></div></div>
+<div class="sc" id="scComp"><div class="comp-wrap"><div class="comp-trophy" id="cTrophy">🏆</div><div class="comp-title" id="cTitle"></div><div class="comp-letter-row"><div class="comp-L" id="cBig"></div><div class="comp-l" id="cSmall"></div></div><div class="comp-word-box" id="cWordBox"></div><div class="comp-stars" id="cStars"></div><div class="comp-xp-badge" id="cXP"></div><div class="comp-remark" id="cRemark"></div><div class="comp-btns"><button class="comp-btn main" onclick="goNext()">לשלב הבא ←</button><button class="comp-btn sec" onclick="showHome()">חזור למסלול</button></div></div></div>
+<div class="sc" id="scPrac"><div class="hdr"><button class="hdr-back" onclick="showHome()">←</button><div class="hdr-info"><div class="hdr-title">🏋️ תרגול</div><div class="hdr-sub" id="pracSub"></div></div></div><div class="prac-tabs"><div class="prac-tab on" id="ptab0" onclick="setPracTab(0)">🧠 זיהוי</div><div class="prac-tab" id="ptab1" onclick="setPracTab(1)">✍️ כתיבה</div><div class="prac-tab" id="ptab2" onclick="setPracTab(2)">🎧 שמע</div><div class="prac-tab" id="ptab3" onclick="setPracTab(3)">💬 משפטים</div><div class="prac-tab" id="ptab4" onclick="setPracTab(4)">🃏 זיכרון</div><div class="prac-tab" id="ptab5" onclick="setPracTab(5)">🎴 כרטיסיות</div><div class="prac-tab" id="ptab6" onclick="setPracTab(6)">🌍 נושאים</div><div class="prac-tab" id="ptab7" onclick="setPracTab(7)">🎯 מבולבלת</div><div class="prac-tab" id="ptab8" onclick="setPracTab(8)">✅❌ נכון?</div><div class="prac-tab" id="ptab9" onclick="setPracTab(9)">🎪 תפוס!</div><div class="prac-tab" id="ptab10" onclick="setPracTab(10)">⚡ מהיר</div></div><div class="prac-body" id="pracBody"></div></div>
+<div class="sc" id="scDict"><div class="hdr"><button class="hdr-back" onclick="showHome()">←</button><div class="hdr-info"><div class="hdr-title">📖 המילון שלי</div><div class="hdr-sub" id="dictSub"></div></div></div><div style="padding:12px 10px 4px;background:#f8f8ff;"><input class="dict-search" id="dictSearch" placeholder="🔍 חפש..." oninput="renderDict()"/><div class="dict-sort-row"><button class="dict-sort-btn on" data-sort="group" onclick="setDictSort('group')">קבוצה</button><button class="dict-sort-btn" data-sort="abc" onclick="setDictSort('abc')">ABC</button></div></div><div class="dict-body" id="dictBody"></div></div>
+<div class="sc" id="scProg"><div class="hdr"><button class="hdr-back" onclick="showHome()">←</button><div class="hdr-info"><div class="hdr-title">📊 התקדמות</div><div class="hdr-sub">דוח מלא 👨‍👩‍👦</div></div></div><div class="prog-body" id="progBody"></div></div>
+<div class="sc" id="scSettings"><div class="hdr"><button class="hdr-back" onclick="showHome()">←</button><div class="hdr-info"><div class="hdr-title">⚙️ הגדרות</div><div class="hdr-sub">התאמה אישית</div></div></div><div class="settings-body" id="settingsBody"></div></div>
+<div class="modal-bg hidden" id="modalBg"><div class="modal"><div class="modal-title">✨ פרופיל חדש</div><div class="av-grid" id="avGrid"></div><input class="modal-input" id="nameInput" placeholder="שם הילד/ה" maxlength="12"/><div class="modal-btns"><button class="modal-btn cn" onclick="closeModal()">ביטול</button><button class="modal-btn ok" onclick="createProfile()">צור ✓</button></div></div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/js/data.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

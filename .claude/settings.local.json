@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3)",
+      "Bash(npm install:*)",
+      "Bash(npx cap:*)",
+      "Bash(where gradle:*)",
+      "Bash(where java:*)",
+      "Read(//c/Users/300053/AppData/Local/Android/Sdk//**)",
+      "Read(//c/Users/300053/AppData/Local/Android/Sdk/build-tools//**)",
+      "Read(//c/Program Files/**)"
+    ]
+  }
+}

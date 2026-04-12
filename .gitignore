@@ -1,0 +1,9 @@
+node_modules/
+*.db
+.env
+android/build/
+android/.gradle/
+android/app/build/
+android/local.properties
+.DS_Store
+

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">אנגלית בכיף</string>
+    <string name="title_activity_main">אנגלית בכיף</string>
+    <string name="package_name">com.englishfun.app</string>
+    <string name="custom_url_scheme">com.englishfun.app</string>
+</resources>
