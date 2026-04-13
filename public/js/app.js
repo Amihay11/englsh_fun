@@ -156,12 +156,12 @@ function startTopicLesson(topic){
     // Show word card + MCQ hebrew→english
     const others=shuf(words.filter(x=>x!==w)).slice(0,3);
     if(others.length<3){step++;LS.tc[topic.id]=step;sLS();renderTopicStep();return;}
-    b.appendChild(mk('div','card center anim-slideUp',`<div style="font-size:52px">${w.em}</div><div style="font-size:20px;font-weight:900;letter-spacing:1px">${w.en}</div><div style="font-size:13px;color:#a855f7">📢 ${w.phon}</div><div style="font-size:13px;color:#555">= ${w.he}</div>`));
-    speak(w.en);
+    b.appendChild(mk('div','card center anim-slideUp',`<div style="font-size:52px">${w.em}</div><div style="font-size:20px;font-weight:900;letter-spacing:1px">${w.w}</div><div style="font-size:13px;color:#a855f7">📢 ${w.phon}</div><div style="font-size:13px;color:#555">= ${w.he}</div>`));
+    speak(w.w);
     const g=mk('div','mcq-opts anim-slideUp');
     const opts=shuf([{w:w.he,ok:true},...others.map(x=>({w:x.he,ok:false}))]);
     b.appendChild(mk('div','mcq-prompt','מה הפירוש?'));
-    opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.textContent=o.w;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);if(o.ok){bt.classList.add('ok');SFX.play('correct');LS.xp+=5;LS.learnedWords[w.en.toLowerCase()]={w:w.en,phon:w.phon,he:w.he,em:w.em,ts:Date.now()};step++;LS.tc[topic.id]=step;sLS();setTimeout(()=>{stepDone=false;renderTopicStep();},700);}else{bt.classList.add('no');g.querySelectorAll('button').forEach(x=>{if(x.textContent===w.he)x.classList.add('ok');});SFX.play('wrong');if(hearts>0){hearts--;document.getElementById('lHearts').textContent='❤️'.repeat(hearts)+'🖤'.repeat(3-hearts);}setTimeout(()=>{stepDone=false;},600);}};g.appendChild(bt);});
+    opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.textContent=o.w;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);if(o.ok){bt.classList.add('ok');SFX.play('correct');LS.xp+=5;LS.learnedWords[w.w.toLowerCase()]={w:w.w,phon:w.phon,he:w.he,em:w.em,ts:Date.now()};step++;LS.tc[topic.id]=step;sLS();setTimeout(()=>{stepDone=false;renderTopicStep();},700);}else{bt.classList.add('no');g.querySelectorAll('button').forEach(x=>{if(x.textContent===w.he)x.classList.add('ok');});SFX.play('wrong');if(hearts>0){hearts--;document.getElementById('lHearts').textContent='❤️'.repeat(hearts)+'🖤'.repeat(3-hearts);}setTimeout(()=>{stepDone=false;},600);}};g.appendChild(bt);});
     b.appendChild(g);
   }
   renderTopicStep();
