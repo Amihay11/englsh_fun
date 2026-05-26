@@ -36,6 +36,8 @@ async function loadLS(){
   LS.achievements=LS.achievements||[];LS.memWins=LS.memWins||0;LS.storiesDone=LS.storiesDone||0;
   LS.dailyDate=LS.dailyDate||null;LS.dailyDone=LS.dailyDone||false;
   LS.srs=LS.srs||{};LS.tipsShown=LS.tipsShown||[];LS.themesDone=LS.themesDone||0;LS.fcDone=LS.fcDone||0;LS.sessionMistakes=[];
+  LS.practice=LS.practice||{goal:20,date:null,count:0};if(typeof LS.practice.goal!=='number')LS.practice.goal=20;
+  LS.practiceFocus=LS.practiceFocus||{topics:['all'],length:10,game:'mixed',direction:'mix',difficulty:'mix'};
   LS.settings=LS.settings||{ttsSpeed:0.72,exercises:{intro:1,listen:1,write_letter:1,mcq_pic:1,dictation:1,write_word:1,mcq_letter:1,sentence:1},devMode:false,darkMode:false};
   if(LS.settings.darkMode)document.body.classList.add('dark');
 }
@@ -559,12 +561,196 @@ function goNext(){if(isPhrase){const n=curPhraseIdx+1;if(n<PHRASES.length)startP
 else{if(getDone(curIdx)<4)startLesson(curIdx);else{const n=curIdx+1;if(n<LETTERS.length)startLesson(n);else showHome();}}}
 
 // ══ PRACTICE ══
-let pracTab=0,pracQ=[],pracIdx=0,pracRight=0,pracWrong=0;
-function setPracTab(t){pracTab=t;for(let i=0;i<=10;i++){const el=document.getElementById('ptab'+i);if(el)el.classList.toggle('on',i===t);}
-  if(t===4){showMemoryGame();return;}if(t===5){showFlashcards();return;}if(t===6){showThemes();return;}
-  if(t===7){showPracScramble();return;}if(t===8){showPracTF();return;}if(t===9){showPracCatch();return;}if(t===10){showPracSpeed();return;}
-  buildPrac();renderPracQ();}
-function showPractice(){sw('scPrac');setNav('bnPrac');const started=LETTERS.filter((_,i)=>getDone(i)>0).length;document.getElementById('pracSub').textContent=learnedCount()+' אותיות · '+totalLearnedWords()+' מילים';if(started<2){document.getElementById('pracBody').innerHTML='<div style="text-align:center;padding:24px;font-size:48px">🔒</div><div style="text-align:center;font-weight:700;color:#5838fa">למד 2 אותיות קודם!</div>';return;}buildPrac();renderPracQ();}
+// ══ DAILY GOAL ══
+function pracDayRollover(){const today=new Date().toDateString();if(LS.practice.date!==today){LS.practice.date=today;LS.practice.count=0;sLS();}}
+function bumpDailyPractice(){pracDayRollover();LS.practice.count++;if(LS.practice.count===LS.practice.goal){updateStreak();launchConfetti();toast('🎯 הגעת ליעד היומי!');}sLS();}
+
+// ══ PRACTICE HUB ══
+function showPractice(){sw('scPrac');setNav('bnPrac');const started=LETTERS.filter((_,i)=>getDone(i)>0).length;document.getElementById('pracSub').textContent=learnedCount()+' אותיות · '+totalLearnedWords()+' מילים';if(started<2){document.getElementById('pracBody').innerHTML='<div style="text-align:center;padding:24px;font-size:48px">🔒</div><div style="text-align:center;font-weight:700;color:#5838fa">למד 2 אותיות קודם!</div>';return;}showPracHub();}
+function showPracHub(){
+  const b=document.getElementById('pracBody');b.innerHTML='';pracDayRollover();
+  const goal=LS.practice.goal,done=LS.practice.count,pct=Math.min(100,Math.round(done/goal*100));
+  b.appendChild(mk('div','prac-goal anim-slideDown',`<div class="prac-goal-top"><span>🎯 יעד יומי</span><span>${done}/${goal} · 🔥 ${LS.streak}</span></div><div class="xp-track"><div class="xp-fill" style="width:${pct}%"></div></div>${done>=goal?'<div class="prac-goal-done">✅ כל הכבוד! הגעת ליעד היומי</div>':''}`));
+  const modes=[
+    {em:'⚡',t:'חזרה חכמה',d:'המילים שכדאי לחזק',cls:' smart',fn:startSmartReview},
+    {em:'🎯',t:'תרגול ממוקד',d:'בחר נושא וסוג',fn:showPracSetup},
+    {em:'🎮',t:'משחקים',d:'9 משחקים',fn:showPracArcade},
+    {em:'🩹',t:'תיקון טעויות',d:'מילים שטעית בהן',fn:startFixMistakes},
+    {em:'📊',t:'השליטה שלי',d:'התקדמות לפי נושא',fn:showPracMastery}
+  ];
+  const grid=mk('div','prac-hub-grid anim-slideUp');
+  modes.forEach(m=>{const c=mk('div','prac-hub-card'+(m.cls||''));c.innerHTML=`<div class="phc-em">${m.em}</div><div class="phc-t">${m.t}</div><div class="phc-d">${m.d}</div>`;c.onclick=m.fn;grid.appendChild(c);});
+  b.appendChild(grid);
+}
+
+// ══ FOCUS POOL ══
+function buildFocusPool(focus){
+  const map={},add=x=>{if(x&&x.w&&x.he){const k=x.w.toLowerCase();if(!map[k])map[k]={w:x.w,phon:x.phon||'',he:x.he,em:x.em||'📝'};}};
+  const src=(focus.topics&&focus.topics.length)?focus.topics:['all'];
+  if(src.includes('all')){allLearnedWords().forEach(add);return Object.values(map);}
+  src.forEach(s=>{
+    if(s==='letters'){LETTERS.forEach((lt,i)=>{if(getDone(i)>0)[{w:lt.word,phon:lt.wPhon,he:lt.wHe,em:lt.wEm},...lt.more].forEach(add);});}
+    else if(s==='phrases'){PHRASES.forEach(p=>p.items.forEach(it=>add({w:it.en,phon:it.phon,he:it.he,em:it.em})));}
+    else if(s==='weak'){const learned=allLearnedWords();getWeakWords(40).forEach(wk=>{const f=learned.find(x=>x.w.toLowerCase()===wk);if(f)add(f);});}
+    else{const th=THEMES.find(t=>t.id===s);if(th)th.words.forEach(add);}
+  });
+  return Object.values(map);
+}
+
+// ══ SRS-WEIGHTED ORDERING ══
+function getDueWords(pool,n){
+  const now=Date.now();
+  const scored=pool.map(w=>{const s=LS.srs[w.w.toLowerCase()];let pri=1,sc=0.5;if(s){sc=s.c/(s.c+s.w+1);if(s.next<=now)pri=3;else if(s.w>s.c)pri=2;else pri=0;}return {w,pri,sc,r:Math.random()};});
+  scored.sort((a,b)=>b.pri-a.pri||a.sc-b.sc||a.r-b.r);
+  return scored.slice(0,n||scored.length).map(x=>x.w);
+}
+
+// ══ SESSION ENGINE ══
+let SESS=null;
+function startSession(opts){
+  const pool=opts.pool.slice(),b=document.getElementById('pracBody');
+  if(pool.length<3){b.innerHTML='';const h=mk('div','sess-head');h.innerHTML='<button class="sess-x" onclick="showPracHub()">✕</button>';b.appendChild(h);b.appendChild(mk('div','',`<div style="text-align:center;padding:30px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>`));return;}
+  const len=opts.length==='all'?pool.length:Math.min(parseInt(opts.length)||10,pool.length);
+  const queue=opts.weighted===false?shuf(pool).slice(0,len):getDueWords(pool,len);
+  SESS={queue,idx:0,right:0,wrong:0,results:[],opts,pool,locked:false};
+  renderSessQ();
+}
+function pickKind(w){
+  const o=SESS.opts,multi=/\s/.test(w.w.trim()),g=o.game||'mixed',diff=o.difficulty||'mix';
+  if(g==='recognition')return 'mcq';
+  if(g==='listening')return 'listen';
+  if(g==='typing')return multi?'mcq':'type';
+  let kinds;
+  if(diff==='rec')kinds=['mcq','listen'];
+  else if(diff==='type')kinds=multi?['mcq','listen']:['type','dict'];
+  else kinds=multi?['mcq','listen']:['mcq','type','listen','dict'];
+  return kinds[Math.floor(Math.random()*kinds.length)];
+}
+function resolveDir(d){return (d==='en2he'||d==='he2en')?d:(Math.random()>0.5?'en2he':'he2en');}
+function renderSessQ(){
+  const b=document.getElementById('pracBody');b.innerHTML='';SESS.locked=false;
+  if(SESS.idx>=SESS.queue.length)return sessResults();
+  const head=mk('div','sess-head anim-slideDown');
+  head.innerHTML=`<button class="sess-x">✕</button><div class="sess-prog"><div class="sess-prog-fill" style="width:${SESS.idx/SESS.queue.length*100}%"></div></div><div class="sess-sc">✓ ${SESS.right}</div>`;
+  b.appendChild(head);head.querySelector('.sess-x').onclick=showPracHub;
+  const w=SESS.queue[SESS.idx],kind=pickKind(w);
+  if(kind==='mcq')renderMCQ(w,resolveDir(SESS.opts.direction),b);
+  else if(kind==='type')renderTypeQ(w,b);
+  else if(kind==='listen')renderListenQ(w,b);
+  else renderDictQ(w,b);
+}
+function sessNext(w,ok,b){
+  srsRecord(w.w,ok);bumpDailyPractice();SESS.results.push({w,ok});
+  if(ok){SESS.right++;LS.xp+=5;sLS();SFX.play('correct');showCorrectBurst();}
+  else{SESS.wrong++;SFX.play('wrong');(LS.sessionMistakes=LS.sessionMistakes||[]).push(w.w);}
+  SESS.idx++;
+  const nb=mk('button','act-btn go anim-slideUp','הבאה ←');nb.onclick=renderSessQ;b.appendChild(nb);
+}
+function renderMCQ(w,dir,b){
+  const en2he=dir==='en2he';
+  const distract=shuf(SESS.pool.filter(x=>x.w.toLowerCase()!==w.w.toLowerCase())).slice(0,3);
+  const correct=en2he?w.he:w.w.toLowerCase();
+  const opts=shuf([w,...distract]).map(x=>({txt:en2he?x.he:x.w.toLowerCase(),ok:x.w.toLowerCase()===w.w.toLowerCase()}));
+  const prompt=en2he?`<div style="font-size:46px">${w.em||'📝'}</div><div class="sess-q-en">${w.w.toLowerCase()} 🔊</div><div class="sess-q-phon">${w.phon||''}</div>`:`<div style="font-size:30px;font-weight:800;color:#5838fa">${w.he}</div>`;
+  const card=mk('div','card center anim-slideUp',prompt);b.appendChild(card);
+  if(en2he){const q=card.querySelector('.sess-q-en');if(q)q.onclick=()=>speak(w.w);speak(w.w);}
+  const g=mk('div','mcq-opts anim-slideUp');
+  opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.textContent=o.txt;bt.onclick=()=>{if(SESS.locked)return;SESS.locked=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);bt.classList.add(o.ok?'ok':'no');if(!o.ok)g.querySelectorAll('button').forEach(x=>{if(x.textContent===correct)x.classList.add('ok');});if(!en2he)speak(w.w);sessNext(w,o.ok,b);};g.appendChild(bt);});
+  b.appendChild(g);
+}
+function sessTypeCard(w,b,prompt){
+  const card=mk('div','card center anim-slideUp',prompt+`<div class="write-input-row" style="margin-top:8px"><input class="write-input" dir="ltr" id="sI" placeholder="?" autocomplete="off" autocapitalize="off" spellcheck="false" style="font-size:18px;letter-spacing:2px"/><button class="write-check-btn" id="sC">✓</button></div><div class="write-attempts" id="sA"></div>`);
+  b.appendChild(card);let attempts=0;const inp=card.querySelector('#sI'),btn=card.querySelector('#sC');
+  const finish=ok=>{inp.disabled=true;btn.disabled=true;sessNext(w,ok,b);};
+  const check=()=>{if(!inp.value.trim())return;if(inp.value.trim().toLowerCase()===w.w.toLowerCase()){inp.classList.add('ok-inp');LS.writes++;sLS();speak(w.w);finish(true);}else{attempts++;card.querySelector('#sA').textContent='❌ '+attempts+(attempts>=2?' — '+w.w.toLowerCase():'');inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';inp.focus();},600);if(attempts>=3)finish(false);}};
+  btn.onclick=check;inp.addEventListener('keydown',e=>{if(e.key==='Enter')check();});
+  return {card,inp};
+}
+function renderTypeQ(w,b){sessTypeCard(w,b,`<div style="font-size:42px">${w.em||'📝'}</div><div style="font-size:22px;font-weight:800;color:#5838fa;margin:4px 0">${w.he}</div><div class="sess-q-phon">${w.phon||''}</div>`);setTimeout(()=>{const i=document.getElementById('sI');if(i)i.focus();},100);}
+function renderListenQ(w,b){
+  const distract=shuf(SESS.pool.filter(x=>x.w.toLowerCase()!==w.w.toLowerCase())).slice(0,3);
+  const card=mk('div','card center anim-slideUp',`<div class="sess-spk" id="sSpk">🔊</div><div style="font-size:12px;color:#888">הקשב ובחר את התרגום</div>`);
+  b.appendChild(card);card.querySelector('#sSpk').onclick=()=>{speak(w.w);SFX.play('click');};speak(w.w);
+  const opts=shuf([w,...distract]).map(x=>({txt:x.he,ok:x.w.toLowerCase()===w.w.toLowerCase()}));
+  const g=mk('div','mcq-opts anim-slideUp');
+  opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.textContent=o.txt;bt.onclick=()=>{if(SESS.locked)return;SESS.locked=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);bt.classList.add(o.ok?'ok':'no');if(!o.ok)g.querySelectorAll('button').forEach(x=>{if(x.textContent===w.he)x.classList.add('ok');});sessNext(w,o.ok,b);};g.appendChild(bt);});
+  b.appendChild(g);
+}
+function renderDictQ(w,b){const r=sessTypeCard(w,b,`<div class="sess-spk" id="sSpk">🔊</div><div style="font-size:12px;color:#888">הקשב וכתוב באנגלית</div>`);r.card.querySelector('#sSpk').onclick=()=>{speak(w.w);SFX.play('click');};setTimeout(()=>{speak(w.w);r.inp.focus();},250);}
+function sessResults(){
+  const b=document.getElementById('pracBody');b.innerHTML='';
+  const total=SESS.results.length,right=SESS.results.filter(r=>r.ok).length,pct=total?Math.round(right/total*100):0;
+  const missed=SESS.results.filter(r=>!r.ok).map(r=>r.w),o=SESS.opts;
+  b.appendChild(mk('div','sess-res anim-slideUp',`<div style="font-size:60px">${pct>=80?'🏆':pct>=50?'💪':'📚'}</div><div class="sess-res-sc">${right}/${total} · ${pct}%</div><div class="sess-res-xp">+${right*5} XP</div>`));
+  const list=mk('div','sess-res-list anim-slideUp');
+  SESS.results.forEach(r=>{const row=mk('div','sess-res-row '+(r.ok?'ok':'no'));row.innerHTML=`<span class="srr-mark">${r.ok?'✓':'✗'}</span><span class="srr-em">${r.w.em||'📝'}</span><span class="srr-en">${r.w.w.toLowerCase()}</span><span class="srr-he">${r.w.he}</span>`;row.onclick=()=>speak(r.w.w);list.appendChild(row);});
+  b.appendChild(list);
+  const btns=mk('div','sess-res-btns');
+  if(missed.length){const fix=mk('button','act-btn go','תרגל טעויות 🩹');fix.onclick=()=>startSession({pool:missed,length:missed.length,game:o.game,direction:o.direction,difficulty:o.difficulty,weighted:false});btns.appendChild(fix);}
+  const again=mk('button','act-btn '+(missed.length?'soft':'go'),'שוב 🔄');again.onclick=()=>startSession(o);btns.appendChild(again);
+  const home=mk('button','act-btn soft','חזרה 🏠');home.onclick=showPracHub;btns.appendChild(home);
+  b.appendChild(btns);checkAchievements();
+}
+
+// ══ SMART REVIEW / FIX MISTAKES ══
+function startSmartReview(){const pool=allLearnedWords();if(pool.length<4){toast('למד עוד מילים קודם 📚');return;}startSession({pool,length:Math.min(20,pool.length),game:'mixed',direction:'mix',difficulty:'mix',weighted:true});}
+function startFixMistakes(){const learned=allLearnedWords();const keys=new Set([...getWeakWords(50),...(LS.sessionMistakes||[])].map(s=>s.toLowerCase()));const pool=learned.filter(x=>keys.has(x.w.toLowerCase()));if(pool.length<3){toast('אין מספיק טעויות — כל הכבוד! 🎉');return;}startSession({pool,length:Math.min(15,pool.length),game:'mixed',direction:'mix',difficulty:'mix',weighted:true});}
+
+// ══ FOCUS SETUP ══
+function showPracSetup(){
+  const b=document.getElementById('pracBody');b.innerHTML='';
+  const f=LS.practiceFocus;
+  const head=mk('div','sess-head');head.innerHTML=`<button class="sess-x">✕</button><div class="setup-title">🎯 תרגול ממוקד</div>`;b.appendChild(head);head.querySelector('.sess-x').onclick=showPracHub;
+  const sources=[{id:'all',t:'הכול',em:'🌐'},{id:'weak',t:'חלשות',em:'🔥'},{id:'letters',t:'אותיות',em:'🔤'},{id:'phrases',t:'ביטויים',em:'💬'},...THEMES.map(th=>({id:th.id,t:th.title,em:th.emoji}))];
+  const sec=mk('div','setup-sec');sec.appendChild(mk('div','setup-lbl','📚 מה לתרגל'));
+  const chips=mk('div','setup-chips');
+  sources.forEach(s=>{const c=mk('div','setup-chip'+(f.topics.includes(s.id)?' on':''));c.innerHTML=`${s.em} ${s.t}`;c.onclick=()=>toggleFocusTopic(s.id);chips.appendChild(c);});
+  sec.appendChild(chips);b.appendChild(sec);
+  b.appendChild(focusSeg('📏 אורך','length',[['10','10'],['20','20'],['all','הכול']]));
+  b.appendChild(focusSeg('🎮 סוג','game',[['mixed','מעורב'],['recognition','זיהוי'],['typing','כתיבה'],['listening','האזנה']]));
+  b.appendChild(focusSeg('🔄 כיוון','direction',[['mix','מעורב'],['en2he','EN→עב'],['he2en','עב→EN']]));
+  b.appendChild(focusSeg('🎚️ רמה','difficulty',[['mix','מעורב'],['rec','זיהוי'],['type','הקלדה']]));
+  const start=mk('button','act-btn go','התחל! ←');start.style.marginTop='4px';start.onclick=startFocusSession;b.appendChild(start);
+}
+function focusSeg(label,key,opts){
+  const sec=mk('div','setup-sec');sec.appendChild(mk('div','setup-lbl',label));
+  const row=mk('div','setup-seg');
+  opts.forEach(([val,txt])=>{const o=mk('div','setup-seg-opt'+(String(LS.practiceFocus[key])===String(val)?' on':''));o.textContent=txt;o.onclick=()=>{LS.practiceFocus[key]=val;sLS();showPracSetup();};row.appendChild(o);});
+  sec.appendChild(row);return sec;
+}
+function toggleFocusTopic(id){
+  const f=LS.practiceFocus;
+  if(id==='all')f.topics=['all'];
+  else{f.topics=f.topics.filter(x=>x!=='all');if(f.topics.includes(id))f.topics=f.topics.filter(x=>x!==id);else f.topics.push(id);if(!f.topics.length)f.topics=['all'];}
+  sLS();showPracSetup();
+}
+function startFocusSession(){
+  const f=LS.practiceFocus,pool=buildFocusPool(f);
+  if(pool.length<3){toast('בחר עוד נושאים 📚');return;}
+  startSession({pool,length:f.length,game:f.game,direction:f.direction,difficulty:f.difficulty,weighted:true});
+}
+
+// ══ ARCADE MENU ══
+function showPracArcade(){
+  const b=document.getElementById('pracBody');b.innerHTML='';
+  const head=mk('div','sess-head');head.innerHTML=`<button class="sess-x">✕</button><div class="setup-title">🎮 משחקים</div>`;b.appendChild(head);head.querySelector('.sess-x').onclick=showPracHub;
+  const games=[{em:'🔗',t:'התאמה',fn:showMatchPairs},{em:'🧱',t:'בניית משפט',fn:showSentenceBuilder},{em:'🃏',t:'זיכרון',fn:showMemoryGame},{em:'🎴',t:'כרטיסיות',fn:showFlashcards},{em:'🎯',t:'מבולבלת',fn:showPracScramble},{em:'✅',t:'נכון/לא',fn:showPracTF},{em:'🎪',t:'תפוס!',fn:showPracCatch},{em:'⚡',t:'מהיר',fn:showPracSpeed},{em:'🌍',t:'נושאים',fn:showThemes}];
+  const grid=mk('div','prac-hub-grid anim-slideUp');
+  games.forEach(g=>{const c=mk('div','prac-hub-card sm');c.innerHTML=`<div class="phc-em">${g.em}</div><div class="phc-t">${g.t}</div>`;c.onclick=()=>g.fn();grid.appendChild(c);});
+  b.appendChild(grid);
+}
+
+// ══ MASTERY VIEW ══
+function showPracMastery(){
+  const b=document.getElementById('pracBody');b.innerHTML='';
+  const head=mk('div','sess-head');head.innerHTML=`<button class="sess-x">✕</button><div class="setup-title">📊 השליטה שלי</div>`;b.appendChild(head);head.querySelector('.sess-x').onclick=showPracHub;
+  const all=allLearnedWords(),scores=all.map(w=>getWordScore(w.w)),avg=scores.length?Math.round(scores.reduce((a,c)=>a+c,0)/scores.length):0;
+  b.appendChild(mk('div','card center',`<div style="font-size:32px;font-weight:900;color:#5838fa">${avg}%</div><div style="font-size:12px;color:#888">שליטה כללית · ${all.length} מילים</div>`));
+  const wrap=mk('div','mastery-wrap');
+  THEMES.forEach(th=>{const seen=th.words.filter(w=>LS.srs[w.w.toLowerCase()]);if(!seen.length)return;const score=Math.round(seen.reduce((a,w)=>a+getWordScore(w.w),0)/seen.length);const grad=score>=80?'linear-gradient(90deg,#58cc02,#48b800)':score>=40?'linear-gradient(90deg,#ffd600,#ffaa00)':'linear-gradient(90deg,#ff8a8a,#ff4b4b)';const row=mk('div','mastery-row');row.innerHTML=`<div class="mr-top"><span>${th.emoji} ${th.title}</span><span>${score}% · ${seen.length}/${th.words.length}</span></div><div class="xp-track"><div class="xp-fill" style="width:${score}%;background:${grad}"></div></div>`;row.onclick=()=>{LS.practiceFocus.topics=[th.id];sLS();startFocusSession();};wrap.appendChild(row);});
+  if(wrap.children.length)b.appendChild(wrap);
+  else b.appendChild(mk('div','',`<div style="text-align:center;color:#bbb;padding:24px">תרגל כדי לראות התקדמות לפי נושא! 🚀</div>`));
+}
 // Pool of EVERY word the child has learned — letters (started), topics, and phrases.
 function allLearnedWords(){
   const map={};
@@ -573,22 +759,65 @@ function allLearnedWords(){
   return Object.values(map);
 }
 function writableLearnedWords(){const a=allLearnedWords().filter(x=>isWordWritable(x.w));return a.length?a:allLearnedWords();}
-function buildPrac(){
-  const l=LETTERS.filter((_,i)=>getDone(i)>0);pracQ=[];pracIdx=0;pracRight=0;pracWrong=0;if(l.length<2)return;
-  const wWords=writableLearnedWords();
-  if(pracTab===0){for(let i=0;i<10;i++){const lt=l[Math.floor(Math.random()*l.length)];const pool=l.filter(x=>x.L!==lt.L);if(pool.length<1)continue;const d=shuf(pool).slice(0,3);pracQ.push({lt,type:i%2?'letter':'pic',dist:d});}}
-  else if(pracTab===1){for(let i=0;i<8;i++){if(i%2&&wWords.length){pracQ.push({word:wWords[Math.floor(Math.random()*wWords.length)],type:'write_w'});}else{const lt=l[Math.floor(Math.random()*l.length)];pracQ.push({lt,type:'write_l'});}}}
-  else if(pracTab===2){if(wWords.length)for(let i=0;i<8;i++)pracQ.push({word:wWords[Math.floor(Math.random()*wWords.length)],type:'dict'});}
-  else{const pool=[...l.filter(x=>x.sentence).map(x=>x.sentence),...PHRASES.filter(p=>getPDone(p.id)>0||LS.settings.devMode).map(p=>p.sentence)];for(let i=0;i<8&&pool.length;i++)pracQ.push({sentence:pool[Math.floor(Math.random()*pool.length)],type:'sent'});}
+// ══ MATCH PAIRS GAME ══
+function showMatchPairs(){
+  const b=document.getElementById('pracBody');b.innerHTML='';
+  const head=mk('div','sess-head');head.innerHTML='<button class="sess-x" onclick="showPracArcade()">✕</button><div class="setup-title">🔗 התאמה</div>';b.appendChild(head);
+  const words=allLearnedWords();
+  if(words.length<4){b.appendChild(mk('div','',`<div style="text-align:center;padding:30px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>`));return;}
+  const pick=shuf(words).slice(0,Math.min(6,words.length));
+  let sel=null,matched=0;
+  const wrap=mk('div','match-wrap');const colL=mk('div','match-col');const colR=mk('div','match-col');
+  function tap(el,side,key,en){
+    if(el.classList.contains('match-done'))return;
+    if(sel===el){el.classList.remove('match-on');sel=null;return;}
+    if(sel&&sel.dataset.side===side){sel.classList.remove('match-on');sel=el;el.classList.add('match-on');SFX.play('click');return;}
+    if(!sel){sel=el;el.classList.add('match-on');SFX.play('click');return;}
+    const other=sel;sel=null;other.classList.remove('match-on');
+    if(other.dataset.key===key){other.classList.add('match-done');el.classList.add('match-done');SFX.play('correct');speak(en);srsRecord(key,true);matched++;
+      if(matched===pick.length){setTimeout(()=>{LS.xp+=15;sLS();checkAchievements();b.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">🎉</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin:8px 0">כל ההתאמות! +15 XP</div><button class="act-btn go" onclick="showMatchPairs()" style="margin-top:12px">שוב 🔄</button></div>`;},550);}
+    }else{srsRecord(other.dataset.key,false);SFX.play('wrong');other.classList.add('match-bad');el.classList.add('match-bad');setTimeout(()=>{other.classList.remove('match-bad');el.classList.remove('match-bad');},600);}
+  }
+  shuf(pick).forEach(w=>{const k=w.w.toLowerCase();const el=mk('div','match-item');el.textContent=w.w.toLowerCase();el.dataset.side='L';el.dataset.key=k;el.onclick=()=>tap(el,'L',k,w.w);colL.appendChild(el);});
+  shuf(pick).forEach(w=>{const k=w.w.toLowerCase();const el=mk('div','match-item he');el.textContent=w.he;el.dataset.side='R';el.dataset.key=k;el.onclick=()=>tap(el,'R',k,w.w);colR.appendChild(el);});
+  wrap.appendChild(colL);wrap.appendChild(colR);b.appendChild(wrap);
 }
-function renderPracQ(){const b=document.getElementById('pracBody');b.innerHTML='';if(!pracQ.length){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים כדי לתרגל! 📚</div>';return;}if(pracIdx>=pracQ.length){b.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">${pracRight/pracQ.length>=.8?'🏆':'💪'}</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin-top:8px">${pracRight}/${pracQ.length} (${Math.round(pracRight/pracQ.length*100)}%)</div><button class="act-btn go" onclick="buildPrac();renderPracQ()" style="margin-top:12px">שוב 🔄</button></div>`;return;}stepDone=false;writeAttempts=0;const q=pracQ[pracIdx];b.appendChild(mk('div','prac-score anim-slideDown',`<div class="psc"><div class="psc-n g">${pracRight}</div><div class="psc-l">✓</div></div><div class="psc"><div class="psc-n gr">${pracIdx}/${pracQ.length}</div><div class="psc-l">#</div></div><div class="psc"><div class="psc-n r">${pracWrong}</div><div class="psc-l">✗</div></div>`));if(q.type==='pic')pPic(q,b);else if(q.type==='letter')pLetter(q,b);else if(q.type==='write_l')pWriteL(q,b);else if(q.type==='write_w')pWriteW(q,b);else if(q.type==='dict')pDict(q,b);else pSentP(q,b);}
-function pAns(ok,b){if(ok){pracRight++;showCorrectBurst();SFX.play('correct');LS.xp+=5;sLS();}else{pracWrong++;SFX.play('wrong');}pracIdx++;const nb=mk('button','act-btn go anim-slideUp','הבאה ←');nb.onclick=renderPracQ;b.appendChild(nb);}
-function pPic({lt,dist},b){if(!lt||!dist||!dist.length){pracIdx++;renderPracQ();return;}b.appendChild(mk('div','mcq-prompt anim-slideUp','מה ב-<b>'+lt.l+'</b>?'));const opts=shuf([{w:lt.word,em:lt.wEm,ok:true},...dist.map(d=>({w:d.word,em:d.wEm,ok:false}))]);const g=mk('div','mcq-opts anim-slideUp');opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.innerHTML=`<span style="font-size:26px">${o.em}</span><span class="opt-en">${o.w.toLowerCase()}</span>`;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);bt.classList.add(o.ok?'ok':'no');speak(lt.word);pAns(o.ok,b);};g.appendChild(bt);});b.appendChild(g);}
-function pLetter({lt,dist},b){if(!lt||!dist||!dist.length){pracIdx++;renderPracQ();return;}b.appendChild(mk('div','card center anim-slideUp',`<div style="font-size:48px">${lt.wEm}</div><div style="font-size:18px;font-weight:700">${lt.word.toLowerCase()}</div>`));const opts=shuf([{l:lt.l,ok:true},...dist.map(d=>({l:d.l,ok:false}))]);const g=mk('div','mcq-opts anim-slideUp');opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.innerHTML=`<span class="opt-letter">${o.l}</span>`;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);bt.classList.add(o.ok?'ok':'no');pAns(o.ok,b);};g.appendChild(bt);});b.appendChild(g);}
-function pWriteL({lt},b){stepDone=false;writeAttempts=0;const c=mk('div','card center anim-slideUp');c.innerHTML=`<div class="write-target-big" id="pT">${lt.l}</div><div class="write-input-row"><input class="write-input" dir="ltr" id="pI" maxlength="1" placeholder="${lt.l}" autocomplete="off"/></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);document.getElementById('pT').onclick=()=>speak(lt.L);const inp=document.getElementById('pI');inp.oninput=()=>{if(inp.value.toUpperCase()===lt.L.toUpperCase()){inp.classList.add('ok-inp');LS.writes++;sLS();pAns(true,b);}else if(inp.value){writeAttempts++;if(writeAttempts>=3){inp.disabled=true;pAns(false,b);}else{inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';},500);}}};setTimeout(()=>inp.focus(),100);}
-function pWriteW({word:w},b){if(!w){pracIdx++;renderPracQ();return;}stepDone=false;writeAttempts=0;const c=mk('div','card center anim-slideUp');c.innerHTML=`<div style="font-size:13px;color:#a855f7;margin-bottom:6px">${w.phon||''}</div><div style="font-size:32px;filter:blur(6px);cursor:pointer;transition:filter .3s;margin-bottom:4px" onclick="this.style.filter='none'">${w.em||'📝'}</div><div style="font-size:10px;color:#bbb;margin-bottom:8px">👆 לחץ לרמז</div><div class="write-input-row"><input class="write-input" dir="ltr" id="pI" placeholder="${w.w.toLowerCase()}" autocomplete="off" style="font-size:16px;letter-spacing:3px"/><button class="write-check-btn" id="pC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);const inp=document.getElementById('pI');document.getElementById('pC').onclick=()=>{if(!inp.value)return;if(inp.value.trim().toLowerCase()===w.w.toLowerCase()){inp.classList.add('ok-inp');LS.writes++;srsRecord(w.w,true);sLS();pAns(true,b);}else{writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';inp.focus();},600);if(writeAttempts>=3){srsRecord(w.w,false);pAns(false,b);}}};setTimeout(()=>inp.focus(),100);}
-function pDict({word:w},b){if(!w){pracIdx++;renderPracQ();return;}stepDone=false;writeAttempts=0;const t=w;const c=mk('div','card center anim-slideUp');c.innerHTML=`<div style="font-size:64px;cursor:pointer" id="pS">🔊</div><div style="font-size:12px;color:#888">שמע וכתוב</div><div class="write-input-row"><input class="write-input" dir="ltr" id="pI" placeholder="?" autocomplete="off" style="font-size:16px;letter-spacing:3px"/><button class="write-check-btn" id="pC">✓</button></div><div class="write-attempts" id="wA"></div>`;b.appendChild(c);document.getElementById('pS').onclick=()=>{speak(t.w);SFX.play('click');};const inp=document.getElementById('pI');document.getElementById('pC').onclick=()=>{if(!inp.value)return;if(inp.value.trim().toLowerCase()===t.w.toLowerCase()){inp.classList.add('ok-inp');LS.writes++;srsRecord(t.w,true);sLS();pAns(true,b);}else{writeAttempts++;document.getElementById('wA').textContent='❌ '+writeAttempts+' — '+t.w.toLowerCase();inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';inp.focus();},600);if(writeAttempts>=3){srsRecord(t.w,false);pAns(false,b);}}};setTimeout(()=>{speak(t.w);inp.focus();},200);}
-function pSentP({sentence:s},b){if(!s){pracIdx++;renderPracQ();return;}stepDone=false;const c=mk('div','sent-card anim-slideUp');c.appendChild(mk('div','sent-label','💬 השלם:'));const parts=s.tmpl.split('___'),sd=mk('div','sent-full');sd.appendChild(document.createTextNode(parts[0]));const bl=mk('span','sent-blank','___');bl.id='sPB';sd.appendChild(bl);if(parts[1])sd.appendChild(document.createTextNode(parts[1]));c.appendChild(sd);const ch=mk('div','sent-choices');shuf(s.choices).forEach(w=>{const bt=mk('button','sent-choice',w);bt.onclick=()=>{if(stepDone)return;const ok=w===s.answer;stepDone=true;bt.classList.add(ok?'ok':'no');if(ok)document.getElementById('sPB').textContent=w;speak(s.answer);pAns(ok,b);};ch.appendChild(bt);});c.appendChild(ch);b.appendChild(c);}
+
+// ══ SENTENCE BUILDER GAME ══
+function showSentenceBuilder(){
+  const b=document.getElementById('pracBody');b.innerHTML='';
+  const head=mk('div','sess-head');head.innerHTML='<button class="sess-x" onclick="showPracArcade()">✕</button><div class="setup-title">🧱 בניית משפט</div>';b.appendChild(head);
+  let sents=[];
+  PHRASES.forEach(p=>{if(getPDone(p.id)>0||LS.settings.devMode)p.items.forEach(it=>{if(/\s/.test(it.en.trim()))sents.push({en:it.en.trim(),he:it.he});});});
+  STORIES.forEach(s=>{if(getSDone(s.id)>0||LS.settings.devMode)s.lines.forEach(l=>{if(/\s/.test(l.en.trim()))sents.push({en:l.en.trim(),he:l.he});});});
+  if(sents.length<3)PHRASES.forEach(p=>p.items.forEach(it=>{if(/\s/.test(it.en.trim()))sents.push({en:it.en.trim(),he:it.he});}));
+  if(sents.length<3){b.appendChild(mk('div','',`<div style="text-align:center;padding:30px;font-weight:700;color:#5838fa">למד ביטויים או סיפורים קודם! 📚</div>`));return;}
+  sents=shuf(sents);let qi=0,total=Math.min(6,sents.length),score=0;
+  const area=mk('div','sb-area');b.appendChild(area);
+  function nextQ(){
+    if(qi>=total){area.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">${score>=Math.ceil(total*0.7)?'🏆':'💪'}</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin:8px 0">${score}/${total}</div><button class="act-btn go" onclick="showSentenceBuilder()" style="margin-top:12px">שוב 🔄</button></div>`;return;}
+    const s=sents[qi],words=s.en.replace(/\s+/g,' ').split(' '),chips=shuf(words.map((w,i)=>({w,i})));let placed=[];
+    area.innerHTML='';
+    area.appendChild(mk('div','mcq-prompt',`🧱 ${qi+1}/${total}`));
+    area.appendChild(mk('div','sb-he',s.he));
+    const slots=mk('div','sb-slots');area.appendChild(slots);
+    const bank=mk('div','sb-bank');area.appendChild(bank);
+    const sp=mk('button','act-btn soft','🔊 שמע');sp.onclick=()=>speak(s.en);area.appendChild(sp);
+    function render(){
+      slots.innerHTML='';bank.innerHTML='';
+      if(!placed.length)slots.appendChild(mk('div','sb-empty','👇 הרכב את המשפט'));
+      placed.forEach((p,pi)=>{const el=mk('div','sb-chip placed',p.w);el.onclick=()=>{placed.splice(pi,1);render();};slots.appendChild(el);});
+      chips.forEach(ch=>{const used=placed.some(p=>p.i===ch.i);const el=mk('div','sb-chip'+(used?' used':''),ch.w);if(!used)el.onclick=()=>{placed.push(ch);SFX.play('click');if(placed.length===words.length)check();else render();};bank.appendChild(el);});
+    }
+    function check(){
+      render();
+      if(placed.map(p=>p.w).join(' ')===words.join(' ')){score++;SFX.play('correct');speak(s.en);slots.querySelectorAll('.sb-chip').forEach(c=>c.classList.add('ok'));qi++;setTimeout(nextQ,950);}
+      else{SFX.play('wrong');slots.querySelectorAll('.sb-chip').forEach(c=>c.classList.add('bad'));setTimeout(()=>{placed=[];render();},800);}
+    }
+    render();
+  }
+  nextQ();
+}
 
 // ══ MEMORY GAME ══
 function showMemoryGame(){
