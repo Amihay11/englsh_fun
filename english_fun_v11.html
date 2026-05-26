@@ -568,7 +568,7 @@ body.dark .lrp-word{color:#e0e0e0;}
 <div class="sc" id="scDict"><div class="hdr"><button class="hdr-back" onclick="showHome()">←</button><div class="hdr-info"><div class="hdr-title">📖 המילון שלי</div><div class="hdr-sub" id="dictSub"></div></div></div><div style="padding:12px 10px 4px;background:#f8f8ff;"><input class="dict-search" id="dictSearch" dir="auto" placeholder="🔍 חפש..." oninput="renderDict()"/><div class="dict-sort-row"><button class="dict-sort-btn on" data-sort="group" onclick="setDictSort('group')">קבוצה</button><button class="dict-sort-btn" data-sort="abc" onclick="setDictSort('abc')">ABC</button></div></div><div class="dict-body" id="dictBody"></div></div>
 <div class="sc" id="scProg"><div class="hdr"><button class="hdr-back" onclick="showHome()">←</button><div class="hdr-info"><div class="hdr-title">📊 התקדמות</div><div class="hdr-sub">דוח מלא 👨‍👩‍👦</div></div></div><div class="prog-body" id="progBody"></div></div>
 <div class="sc" id="scSettings"><div class="hdr"><button class="hdr-back" onclick="showHome()">←</button><div class="hdr-info"><div class="hdr-title">⚙️ הגדרות</div><div class="hdr-sub">התאמה אישית</div></div></div><div class="settings-body" id="settingsBody"></div></div>
-<div class="modal-bg hidden" id="modalBg"><div class="modal"><div class="modal-title">✨ פרופיל חדש</div><div class="av-grid" id="avGrid"></div><input class="modal-input" id="nameInput" placeholder="שם הילד/ה" maxlength="12"/><div class="modal-btns"><button class="modal-btn cn" onclick="closeModal()">ביטול</button><button class="modal-btn ok" onclick="createProfile()">צור ✓</button></div></div></div>
+<div class="modal-bg hidden" id="modalBg"><div class="modal"><div class="modal-title">✨ פרופיל חדש</div><div class="av-grid" id="avGrid"></div><input class="modal-input" id="nameInput" placeholder="שם הילד/ה" maxlength="12"/><select class="modal-input" id="startStage"></select><div class="modal-btns"><button class="modal-btn cn" onclick="closeModal()">ביטול</button><button class="modal-btn ok" onclick="createProfile()">צור ✓</button></div></div></div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -929,9 +929,33 @@ function renderProfiles(){const g=document.getElementById('profGrid');g.innerHTM
 async function selProf(id){activeId=id;sActive();await loadLS();showHome();}
 function switchProfile(){sw('scProf');renderProfiles();}
 let selAv='😊';
-function openModal(){selAv='😊';const g=document.getElementById('avGrid');g.innerHTML='';AVATARS.forEach(av=>{const d=mk('div','av-opt'+(av===selAv?' sel':''),av);d.onclick=()=>{document.querySelectorAll('.av-opt').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');selAv=av;};g.appendChild(d);});document.getElementById('nameInput').value='';document.getElementById('modalBg').classList.remove('hidden');}
+function openModal(){selAv='😊';const g=document.getElementById('avGrid');g.innerHTML='';AVATARS.forEach(av=>{const d=mk('div','av-opt'+(av===selAv?' sel':''),av);d.onclick=()=>{document.querySelectorAll('.av-opt').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');selAv=av;};g.appendChild(d);});document.getElementById('nameInput').value='';const sel=document.getElementById('startStage');if(sel){sel.innerHTML='<option value="0">🆕 מתחיל מההתחלה</option>'+LETTERS.map((lt,i)=>`<option value="${i+1}">📍 כבר הגעתי עד ${lt.L} (${i+1} אותיות)</option>`).join('');sel.value='0';}document.getElementById('modalBg').classList.remove('hidden');}
 function closeModal(){document.getElementById('modalBg').classList.add('hidden');}
-async function createProfile(){const n=document.getElementById('nameInput').value.trim();if(!n){toast('נא להכניס שם!');return;}if(IS_NATIVE){const id='u'+Date.now();const prof={id,name:n,avatar:selAv};profiles.push(prof);allProfileData[prof.id]={};sProf();}else{try{const prof=await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,avatar:selAv})}).then(r=>r.json());profiles.push(prof);allProfileData[prof.id]={};sProf();}catch(err){toast('שגיאה');}}closeModal();renderProfiles();}
+// Build initial saved-data for a profile restored at a given stage (number of letters already completed).
+function buildSeedData(lettersDone){
+  const seed={lc:{},pc:{},sc:{},xp:0,streak:0,writes:0,learnedWords:{},completedAt:{},achievements:[],srs:{},lastDay:null,memWins:0,storiesDone:0,themesDone:0,fcDone:0,dailyDate:null,dailyDone:false,tipsShown:[],sessionMistakes:[],tc:{},
+    practice:{goal:20,date:null,count:0},practiceFocus:{topics:['all'],length:10,game:'mixed',direction:'mix',difficulty:'mix'},
+    settings:{ttsSpeed:0.72,exercises:{intro:1,listen:1,write_letter:1,mcq_pic:1,dictation:1,write_word:1,mcq_letter:1,sentence:1},devMode:false,darkMode:false}};
+  const now=Date.now();
+  for(let i=0;i<lettersDone&&i<LETTERS.length;i++){
+    seed.lc[i]=4;seed.completedAt[i]=now;seed.xp+=50;
+    const lt=LETTERS[i];
+    [{w:lt.word,phon:lt.wPhon,he:lt.wHe,em:lt.wEm},...lt.more].forEach(m=>{const k=m.w.toLowerCase();if(!seed.learnedWords[k])seed.learnedWords[k]={w:m.w,phon:m.phon,he:m.he,em:m.em,letterL:lt.L,ts:now};});
+  }
+  return seed;
+}
+async function createProfile(){
+  const n=document.getElementById('nameInput').value.trim();if(!n){toast('נא להכניס שם!');return;}
+  const sel=document.getElementById('startStage');const stage=sel?(parseInt(sel.value)||0):0;
+  let prof=null;
+  if(!IS_NATIVE){try{const r=await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,avatar:selAv})});if(r&&r.ok)prof=await r.json();}catch(err){}}
+  if(!prof||!prof.id)prof={id:'u'+Date.now(),name:n,avatar:selAv};
+  profiles.push(prof);
+  const seed=stage>0?buildSeedData(stage):{};
+  allProfileData[prof.id]=seed;
+  if(stage>0){localStorage.setItem('efun7_d_'+prof.id,JSON.stringify(seed));if(!IS_NATIVE){try{await fetch('/api/data/'+prof.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(seed)});}catch(e){}}}
+  sProf();closeModal();renderProfiles();
+}
 async function delProf(e,id){e.stopPropagation();if(!confirm('למחוק?'))return;if(!IS_NATIVE){try{await fetch('/api/profiles/'+id,{method:'DELETE'});}catch(err){}}profiles=profiles.filter(p=>p.id!==id);delete allProfileData[id];localStorage.removeItem('efun7_d_'+id);sProf();renderProfiles();}
 
 function renderDailyBanner(){
