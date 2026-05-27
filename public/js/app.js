@@ -167,35 +167,149 @@ function startGroupReview(from,to){
   window._reviewOnDone=()=>{LS.rc=LS.rc||{};LS.rc[ri]=(LS.rc[ri]||0)+1;sLS();showHome();toast('📝 חזרה הושלמה! +30 XP');LS.xp+=30;sLS();};
   renderStep();
 }
+let onCompNext=null;
 function startTopicLesson(topic){
-  sw('scLesson');document.getElementById('lTitle').textContent=topic.emoji+' '+topic.title;
-  hearts=3;mistakes=0;stepDone=false;isDailyChallenge=false;isPhrase=false;LS.tc=LS.tc||{};
-  const done=LS.tc[topic.id]||0;
+  onCompNext=null;
+  sw('scLesson');SFX.init();
+  document.getElementById('lTitle').textContent=topic.emoji+' '+topic.title;
+  hearts=3;mistakes=0;stepDone=false;isDailyChallenge=false;isPhrase=false;
+  LS.tc=LS.tc||{};LS.learnedWords=LS.learnedWords||{};
   const words=topic.words;
-  let step=done>=words.length?0:done;
-  function renderTopicStep(){
-    document.getElementById('lStep').textContent=(step+1)+'/'+words.length;
-    document.getElementById('lProgFill').style.width=(step/words.length*100)+'%';
-    document.getElementById('lHearts').textContent='❤️'.repeat(hearts)+'🖤'.repeat(3-hearts);
-    if(step>=words.length){LS.tc[topic.id]=words.length;sLS();launchConfetti();sw('scComp');document.getElementById('cTrophy').textContent='🌍';document.getElementById('cTitle').textContent='!כל הכבוד';document.getElementById('cBig').textContent=topic.emoji;document.getElementById('cSmall').textContent=topic.title;document.getElementById('cWordBox').textContent=words.length+' מילים!';document.getElementById('cStars').textContent='⭐⭐⭐';document.getElementById('cXP').textContent='+'+words.length*5+' XP';LS.xp+=words.length*5;sLS();return;}
-    const w=words[step];const b=document.getElementById('lesBody');b.innerHTML='';
-    // Show word card + MCQ hebrew→english
-    const others=shuf(words.filter(x=>x!==w)).slice(0,3);
-    if(others.length<3){step++;LS.tc[topic.id]=step;sLS();renderTopicStep();return;}
-    b.appendChild(mk('div','card center anim-slideUp',`<div style="font-size:52px">${w.em}</div><div style="font-size:20px;font-weight:900;letter-spacing:1px">${w.w}</div><div style="font-size:13px;color:#a855f7">📢 ${w.phon}</div><div style="font-size:13px;color:#555">= ${w.he}</div>`));
-    speak(w.w);
-    const g=mk('div','mcq-opts anim-slideUp');
-    const opts=shuf([{w:w.he,ok:true},...others.map(x=>({w:x.he,ok:false}))]);
-    b.appendChild(mk('div','mcq-prompt','מה הפירוש?'));
-    opts.forEach(o=>{const bt=mk('button','mcq-opt');bt.textContent=o.w;bt.onclick=()=>{if(stepDone)return;stepDone=true;g.querySelectorAll('button').forEach(x=>x.disabled=true);srsRecord(w.w,o.ok);if(o.ok){bt.classList.add('ok');SFX.play('correct');LS.xp+=5;LS.learnedWords[w.w.toLowerCase()]={w:w.w,phon:w.phon,he:w.he,em:w.em,ts:Date.now()};step++;LS.tc[topic.id]=step;sLS();setTimeout(()=>{stepDone=false;renderTopicStep();},700);}else{bt.classList.add('no');g.querySelectorAll('button').forEach(x=>{if(x.textContent===w.he)x.classList.add('ok');});SFX.play('wrong');if(hearts>0){hearts--;document.getElementById('lHearts').textContent='❤️'.repeat(hearts)+'🖤'.repeat(3-hearts);}step++;LS.tc[topic.id]=step;sLS();setTimeout(()=>{stepDone=false;renderTopicStep();},1100);}};g.appendChild(bt);});
-    b.appendChild(g);
+  // One varied practice question per word — answer is never shown up front.
+  const practice=shuf(words).map((w,i)=>{
+    let mode=['meaning','word','listen','truefalse','scramble','type','dictation'][i%7];
+    const oneWord=/^[A-Za-z]+$/.test(w.w);
+    if(mode==='scramble'&&(!oneWord||w.w.length>6))mode='meaning';
+    if((mode==='type'||mode==='dictation')&&(!oneWord||w.w.length>8))mode=mode==='type'?'word':'listen';
+    return {mode,w};
+  });
+  const steps=[{mode:'learn'},...practice];
+  const ptot=practice.length;
+  let step=0,correct=0;
+  function hud(){
+    document.getElementById('lProgFill').style.width=(step/steps.length*100)+'%';
+    document.getElementById('lStep').textContent=step===0?'👀 מילים':step+'/'+ptot;
+    document.getElementById('lHearts').textContent='❤️'.repeat(Math.max(0,hearts))+'🖤'.repeat(3-Math.max(0,hearts));
   }
-  renderTopicStep();
-  document.getElementById('lProgFill').style.width='0%';
+  function adv(){step++;stepDone=false;render();}
+  function reward(ok,word){
+    srsRecord(word.w,ok);
+    if(ok){correct++;SFX.play('correct');LS.xp+=5;sLS();speak(word.w);}
+    else{SFX.play('wrong');if(hearts>0)hearts--;hud();}
+  }
+  function mcqGrid(w,opts){
+    const g=mk('div','mcq-opts anim-slideUp');
+    shuf(opts).forEach(o=>{
+      const bt=mk('button','mcq-opt');bt.innerHTML=o.html;bt._ok=o.ok;
+      bt.onclick=()=>{
+        if(stepDone)return;stepDone=true;
+        [...g.children].forEach(x=>x.disabled=true);
+        reward(o.ok,w);
+        if(o.ok)bt.classList.add('ok');
+        else{bt.classList.add('no');[...g.children].forEach(x=>{if(x._ok)x.classList.add('ok');});}
+        setTimeout(adv,o.ok?750:1250);
+      };
+      g.appendChild(bt);
+    });
+    return g;
+  }
+  function renderScramble(w,bdy){
+    const word=w.w.toUpperCase(),letters=shuf(word.split(''));
+    bdy.appendChild(mk('div','card center anim-slideUp',`<div class="mcq-prompt">🎯 סדר את האותיות!</div><div style="font-size:52px">${w.em}</div><div style="font-size:13px;color:#a855f7">📢 ${w.phon} = ${w.he}</div><div class="scram-slots" id="tSlots"></div><div class="scram-chips" id="tChips"></div>`));
+    const slotsEl=document.getElementById('tSlots'),chipsEl=document.getElementById('tChips');
+    let placed=new Array(word.length).fill('');
+    function draw(){
+      slotsEl.innerHTML='';chipsEl.innerHTML='';
+      word.split('').forEach((_,i)=>{const sl=mk('div','scram-slot'+(placed[i]?' filled':''));sl.textContent=placed[i]||'';if(placed[i])sl.onclick=()=>{if(stepDone)return;placed[i]='';draw();};slotsEl.appendChild(sl);});
+      const used=[];placed.forEach(p=>{if(p){const fi=letters.findIndex((x,i)=>x===p&&!used.includes(i));if(fi>=0)used.push(fi);}});
+      letters.forEach((ch,i)=>{const cp=mk('div','scram-chip'+(used.includes(i)?' used':''));cp.textContent=ch;cp.onclick=()=>{if(used.includes(i)||stepDone)return;let si=-1;for(let j=0;j<word.length;j++){if(!placed[j]){si=j;break;}}if(si===-1)return;placed[si]=ch;SFX.play('click');draw();if(placed.join('')===word){stepDone=true;reward(true,w);setTimeout(adv,800);}};chipsEl.appendChild(cp);});
+    }
+    draw();
+  }
+  function renderTF(w,bdy,ds){
+    const isTrue=Math.random()>0.45,claim=isTrue?w.he:shuf(ds)[0].he;
+    bdy.appendChild(mk('div','mcq-prompt anim-slideUp','התרגום נכון?'));
+    bdy.appendChild(mk('div','tf-card anim-slideUp',`<div class="tf-word">${w.w}</div><div style="font-size:12px;color:#a855f7;margin:-2px 0 6px">📢 ${w.phon}</div><div class="tf-claim">= ${claim} ?</div><div class="tf-btns"><button class="tf-btn yes" id="tfY">✓ נכון</button><button class="tf-btn no-btn" id="tfN">✗ לא</button></div>`));
+    speak(w.w);
+    const go=said=>{if(stepDone)return;stepDone=true;const ok=said===isTrue;document.getElementById(said?'tfY':'tfN').classList.add(ok?'correct':'wrong');reward(ok,w);setTimeout(adv,ok?800:1250);};
+    document.getElementById('tfY').onclick=()=>go(true);
+    document.getElementById('tfN').onclick=()=>go(false);
+  }
+  function renderType(w,bdy,audio){
+    writeAttempts=0;
+    bdy.appendChild(mk('div','card center anim-slideUp',`<div class="mcq-prompt">${audio?'🎧 האזן וכתוב':'✍️ כתוב באנגלית'}</div><div style="font-size:52px;cursor:pointer" id="tHint">${audio?'🔊':w.em}</div><div style="font-size:13px;color:#a855f7">📢 ${w.phon}${audio?'':' · '+w.he}</div><div class="write-letter-row" id="tSlots"></div><div class="write-input-row"><input class="write-input" dir="ltr" id="tIn" placeholder="?" autocomplete="off" style="font-size:18px;letter-spacing:4px;"/><button class="write-check-btn" id="tChk">✓</button></div><div class="write-attempts" id="tAtt"></div>`));
+    const target=w.w,inp=document.getElementById('tIn');
+    const slots=()=>{const c=document.getElementById('tSlots');if(!c)return;c.innerHTML='';const t=inp.value;target.split('').forEach((ch,i)=>{const s=mk('div','write-letter-slot');const v=t[i]||'';if(v){if(v.toLowerCase()===ch.toLowerCase()){s.classList.add('done');s.textContent=ch;}else{s.classList.add('wrong');s.textContent=v;}}else if(i===t.length){s.classList.add('cur');s.textContent='_';}else s.textContent='_';c.appendChild(s);});};
+    document.getElementById('tHint').onclick=()=>{speak(w.w);SFX.play('click');};
+    slots();
+    inp.oninput=()=>{slots();if(inp.value.trim().toLowerCase()===target.toLowerCase()&&!stepDone){stepDone=true;inp.classList.add('ok-inp');reward(true,w);setTimeout(adv,800);}};
+    document.getElementById('tChk').onclick=()=>{if(stepDone||!inp.value)return;writeAttempts++;document.getElementById('tAtt').textContent='❌ '+writeAttempts;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';slots();inp.focus();},600);if(writeAttempts>=3){stepDone=true;document.getElementById('tAtt').textContent='💡 '+target;reward(false,w);setTimeout(adv,1300);}};
+    if(audio)speak(w.w);
+    setTimeout(()=>inp.focus(),150);
+  }
+  function render(){
+    if(step>=steps.length){finish();return;}
+    hud();
+    const s=steps[step],bdy=document.getElementById('lesBody');bdy.innerHTML='';
+    if(s.mode==='learn'){
+      bdy.appendChild(mk('div','mcq-prompt anim-slideUp','👀 למד את המילים — לחץ לשמוע 🔊'));
+      words.forEach((w,i)=>{
+        LS.learnedWords[w.w.toLowerCase()]={w:w.w,phon:w.phon,he:w.he,em:w.em,ts:Date.now()};
+        const d=mk('div','listen-item anim-slideUp');d.style.animationDelay=i*.05+'s';
+        d.innerHTML=`<div class="li-em">${w.em}</div><div class="li-body"><div class="li-en">${w.w}</div><div class="li-phon">${w.phon}</div><div class="li-he">${w.he}</div></div><div class="li-spk">🔊</div>`;
+        d.onclick=()=>{speak(w.w);SFX.play('click');};
+        bdy.appendChild(d);
+      });
+      sLS();
+      const bt=mk('button','act-btn go','בוא נתרגל ←');bt.onclick=adv;bdy.appendChild(bt);
+      return;
+    }
+    const w=s.w,ds=shuf(words.filter(x=>x!==w)).slice(0,3);
+    if(s.mode==='meaning'){
+      bdy.appendChild(mk('div','card center anim-slideUp',`<div style="font-size:26px;font-weight:900;letter-spacing:1px">${w.w}</div><div style="font-size:14px;color:#a855f7">📢 ${w.phon}</div>`));
+      bdy.appendChild(mk('div','mcq-prompt','מה הפירוש?'));
+      bdy.appendChild(mcqGrid(w,[{html:w.he,ok:true},...ds.map(d=>({html:d.he,ok:false}))]));
+    }else if(s.mode==='word'){
+      bdy.appendChild(mk('div','card center anim-slideUp',`<div style="font-size:52px">${w.em}</div><div style="font-size:19px;color:#555">${w.he}</div>`));
+      bdy.appendChild(mk('div','mcq-prompt','איזו מילה באנגלית?'));
+      bdy.appendChild(mcqGrid(w,[{html:`<span class="opt-en">${w.w}</span><span class="opt-phon">${w.phon}</span>`,ok:true},...ds.map(d=>({html:`<span class="opt-en">${d.w}</span><span class="opt-phon">${d.phon}</span>`,ok:false}))]));
+    }else if(s.mode==='listen'){
+      bdy.appendChild(mk('div','card center anim-slideUp',`<div style="font-size:64px;cursor:pointer" id="tSpk">🔊</div><div style="font-size:12px;color:#bbb">לחץ לשמוע שוב</div>`));
+      bdy.appendChild(mk('div','mcq-prompt','מה שמעת?'));
+      bdy.appendChild(mcqGrid(w,[{html:`<span style="font-size:30px">${w.em}</span><span class="opt-en">${w.w}</span>`,ok:true},...ds.map(d=>({html:`<span style="font-size:30px">${d.em}</span><span class="opt-en">${d.w}</span>`,ok:false}))]));
+      document.getElementById('tSpk').onclick=()=>{speak(w.w);SFX.play('click');};
+      speak(w.w);
+    }else if(s.mode==='truefalse'){
+      renderTF(w,bdy,ds);
+    }else if(s.mode==='type'){
+      renderType(w,bdy,false);
+    }else if(s.mode==='dictation'){
+      renderType(w,bdy,true);
+    }else{
+      renderScramble(w,bdy);
+    }
+  }
+  function finish(){
+    LS.tc[topic.id]=words.length;
+    const acc=ptot?correct/ptot:1,stars=acc>=0.9?3:acc>=0.6?2:1,xp=correct*5+words.length*2;
+    LS.xp+=xp;sLS();launchConfetti();sw('scComp');
+    document.getElementById('cTrophy').textContent='🌍';
+    document.getElementById('cTitle').textContent='!כל הכבוד';
+    document.getElementById('cBig').textContent=topic.emoji;
+    document.getElementById('cSmall').textContent=topic.title;
+    document.getElementById('cWordBox').innerHTML=`<div>${correct}/${ptot} נכון · ${words.length} מילים</div>`;
+    document.getElementById('cStars').textContent='⭐'.repeat(stars);
+    document.getElementById('cXP').textContent='+'+xp+' XP';
+    const rmk=FUNNY_REMARKS[Math.floor(Math.random()*FUNNY_REMARKS.length)];document.getElementById('cRemark').innerHTML=rmk.e+' '+rmk.t;
+    const idx=THEMES.indexOf(topic);onCompNext=()=>{if(idx+1<THEMES.length)startTopicLesson(THEMES[idx+1]);else showHome();};
+    checkAchievements();
+  }
+  render();
 }
 
 // ══ HOME ══
 function showHome(){
+  onCompNext=null;
   sw('scHome');setNav('bnHome');
   const p=profiles.find(x=>x.id===activeId)||{avatar:'😊',name:'?'};
   document.getElementById('hAv').textContent=p.avatar;document.getElementById('hName').textContent=p.name;
@@ -581,7 +695,7 @@ function finishLesson(){
   const rmk2=FUNNY_REMARKS[Math.floor(Math.random()*FUNNY_REMARKS.length)];document.getElementById('cRemark').innerHTML=rmk2.e+' '+rmk2.t;
   if((isPhrase&&mistakes===0)||getDone(curIdx)>=4)setTimeout(launchConfetti,400);checkAchievements();
 }
-function goNext(){if(isPhrase){const n=curPhraseIdx+1;if(n<PHRASES.length)startPhraseLesson(n);else showHome();}
+function goNext(){const cn=onCompNext;onCompNext=null;if(cn){cn();return;}if(isPhrase){const n=curPhraseIdx+1;if(n<PHRASES.length)startPhraseLesson(n);else showHome();}
 else{if(getDone(curIdx)<4)startLesson(curIdx);else{const n=curIdx+1;if(n<LETTERS.length)startLesson(n);else showHome();}}}
 
 // ══ PRACTICE ══
