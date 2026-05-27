@@ -758,6 +758,7 @@ function startFocusSession(){
 function showPracArcade(){
   const b=document.getElementById('pracBody');b.innerHTML='';
   const head=mk('div','sess-head');head.innerHTML=`<button class="sess-x">✕</button><div class="setup-title">🎮 משחקים</div>`;b.appendChild(head);head.querySelector('.sess-x').onclick=showPracHub;
+  renderGameFocusBar(b);
   const games=[{em:'🔗',t:'התאמה',fn:showMatchPairs},{em:'🧱',t:'בניית משפט',fn:showSentenceBuilder},{em:'🃏',t:'זיכרון',fn:showMemoryGame},{em:'🎴',t:'כרטיסיות',fn:showFlashcards},{em:'🎯',t:'מבולבלת',fn:showPracScramble},{em:'✅',t:'נכון/לא',fn:showPracTF},{em:'🎪',t:'תפוס!',fn:showPracCatch},{em:'⚡',t:'מהיר',fn:showPracSpeed},{em:'🌍',t:'נושאים',fn:showThemes}];
   const grid=mk('div','prac-hub-grid anim-slideUp');
   games.forEach(g=>{const c=mk('div','prac-hub-card sm');c.innerHTML=`<div class="phc-em">${g.em}</div><div class="phc-t">${g.t}</div>`;c.onclick=()=>g.fn();grid.appendChild(c);});
@@ -783,11 +784,42 @@ function allLearnedWords(){
   return Object.values(map);
 }
 function writableLearnedWords(){const a=allLearnedWords().filter(x=>isWordWritable(x.w));return a.length?a:allLearnedWords();}
+// ══ GAME FOCUS (topics & letters) — focus the arcade games on a topic or letter group ══
+let gameFocus={type:'all'},gameFocusMore=false;
+function gfGroups(){const g={};LETTERS.forEach(lt=>{if(!g[lt.grp])g[lt.grp]={grp:lt.grp,gName:lt.gName};});return Object.values(g).sort((a,b)=>a.grp-b.grp);}
+function gfLearnedGroups(){return gfGroups().filter(g=>LETTERS.some((lt,i)=>lt.grp===g.grp&&getDone(i)>0));}
+function gfGroupWords(grp){const any=LETTERS.some((lt,i)=>lt.grp===grp&&getDone(i)>0);const out={};LETTERS.forEach((lt,i)=>{if(lt.grp!==grp)return;if(any&&getDone(i)<=0)return;[{w:lt.word,phon:lt.wPhon,he:lt.wHe,em:lt.wEm},...lt.more].forEach(x=>{const k=x.w.toLowerCase();if(!out[k])out[k]={w:x.w,phon:x.phon,he:x.he,em:x.em};});});return Object.values(out);}
+function gfThemeLearned(th){if(LS.tc&&LS.tc[th.id]>0)return true;const known=th.words.filter(w=>LS.learnedWords[w.w.toLowerCase()]).length;return known>=Math.ceil(th.words.length*0.6);}
+function gameFocusWords(){if(gameFocus.type==='group')return gfGroupWords(gameFocus.g);if(gameFocus.type==='theme'){const th=THEMES.find(t=>t.id===gameFocus.id);return th?th.words.map(w=>({w:w.w,phon:w.phon,he:w.he,em:w.em})):allLearnedWords();}return allLearnedWords();}
+function gameFocusWritable(){const a=gameFocusWords().filter(x=>isWordWritable(x.w));return a.length?a:gameFocusWords();}
+function gfKey(f){return f.type+(f.g!=null?':'+f.g:'')+(f.id?':'+f.id:'');}
+function setGameFocus(f){gameFocus=f;showPracArcade();}
+function renderGameFocusBar(b){
+  const cur=gfKey(gameFocus);
+  const sec=mk('div','setup-sec');sec.appendChild(mk('div','setup-lbl','🎯 מיקוד: על מה לשחק'));
+  const chips=mk('div','setup-chips');
+  const addChip=(label,f,box)=>{const c=mk('div','setup-chip'+(gfKey(f)===cur?' on':''));if(box)c.setAttribute('style',box);c.textContent=label;c.onclick=()=>setGameFocus(f);chips.appendChild(c);};
+  addChip('🌟 הכל',{type:'all'});
+  THEMES.filter(gfThemeLearned).forEach(th=>addChip(th.emoji+' '+th.title,{type:'theme',id:th.id}));
+  gfLearnedGroups().forEach(g=>addChip('🔤 '+g.gName,{type:'group',g:g.grp}));
+  const lg=gfLearnedGroups(),unlT=THEMES.filter(th=>!gfThemeLearned(th)),unlG=gfGroups().filter(g=>!lg.some(x=>x.grp===g.grp));
+  if(unlT.length||unlG.length){const more=mk('div','setup-chip');more.setAttribute('style','border-style:dashed;color:#a89fd0;background:transparent');more.textContent=gameFocusMore?'הסתר ✕':'➕ עוד';more.onclick=()=>{gameFocusMore=!gameFocusMore;showPracArcade();};chips.appendChild(more);}
+  sec.appendChild(chips);
+  if(gameFocusMore&&(unlT.length||unlG.length)){
+    const dl=mk('div','setup-lbl','נושאים שעוד לא למדת:');dl.setAttribute('style','font-size:11px;color:#bbb;margin-top:10px');sec.appendChild(dl);
+    const mc=mk('div','setup-chips');
+    const addDim=(label,f)=>{const c=mk('div','setup-chip'+(gfKey(f)===cur?' on':''));c.setAttribute('style','opacity:.7');c.textContent=label;c.onclick=()=>setGameFocus(f);mc.appendChild(c);};
+    unlT.forEach(th=>addDim(th.emoji+' '+th.title,{type:'theme',id:th.id}));
+    unlG.forEach(g=>addDim('🔤 '+g.gName,{type:'group',g:g.grp}));
+    sec.appendChild(mc);
+  }
+  b.appendChild(sec);
+}
 // ══ MATCH PAIRS GAME ══
 function showMatchPairs(){
   const b=document.getElementById('pracBody');b.innerHTML='';
   const head=mk('div','sess-head');head.innerHTML='<button class="sess-x" onclick="showPracArcade()">✕</button><div class="setup-title">🔗 התאמה</div>';b.appendChild(head);
-  const words=allLearnedWords();
+  const words=gameFocusWords();
   if(words.length<4){b.appendChild(mk('div','',`<div style="text-align:center;padding:30px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>`));return;}
   const pick=shuf(words).slice(0,Math.min(6,words.length));
   let sel=null,matched=0;
@@ -846,7 +878,7 @@ function showSentenceBuilder(){
 // ══ MEMORY GAME ══
 function showMemoryGame(){
   const b=document.getElementById('pracBody');b.innerHTML='';
-  const words=allLearnedWords();
+  const words=gameFocusWords();
   if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   const pick=shuf(words).slice(0,6);
   let cards=[];pick.forEach((w,wi)=>{const key='m'+wi;cards.push({match:key,type:'en',em:w.em||'📝',txt:w.w.toLowerCase()});cards.push({match:key,type:'he',em:'',txt:w.he});});
@@ -947,10 +979,10 @@ async function playBilNext(els){
 // ══ FLASHCARDS TAB ══
 function showFlashcards(){
   const b=document.getElementById('pracBody');b.innerHTML='';
-  const allW=Object.values(LS.learnedWords);
+  const allW=gameFocusWords();
   if(allW.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים! 📚</div>';return;}
-  // Prioritize weak words
-  const weak=getWeakWords(10);const pool=weak.length>=4?allW.filter(w=>weak.includes(w.w.toLowerCase())):shuf(allW).slice(0,8);
+  // Prioritize weak words within the focused pool
+  const weakSet=new Set(getWeakWords(30));const weakInFocus=allW.filter(w=>weakSet.has(w.w.toLowerCase()));const pool=weakInFocus.length>=4?weakInFocus:shuf(allW).slice(0,8);
   let idx=0;
   function renderCard(){
     b.innerHTML='';
@@ -1039,7 +1071,7 @@ function startReviewSession(words){
 // Override rStoryRead to use bilingual TTS
 
 // ══ PRACTICE GAMES ══
-function showPracScramble(){const words=writableLearnedWords().filter(x=>/^[A-Za-z]+$/.test(x.w));const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<2){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
+function showPracScramble(){const words=gameFocusWritable().filter(x=>/^[A-Za-z]+$/.test(x.w));const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<2){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   let qi=0,total=6,score=0;
   function nextQ(){
     b.innerHTML='';if(qi>=total){b.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">${score>=4?'🏆':'💪'}</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin:8px 0">${score}/${total}</div><button class="act-btn go" onclick="showPracScramble()" style="margin-top:12px">שוב 🔄</button></div>`;return;}
@@ -1057,7 +1089,7 @@ function showPracScramble(){const words=writableLearnedWords().filter(x=>/^[A-Za
   }
   nextQ();
 }
-function showPracTF(){const words=allLearnedWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
+function showPracTF(){const words=gameFocusWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   let qi=0,total=8,score=0;
   function nextQ(){
     b.innerHTML='';if(qi>=total){b.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">${score>=6?'🏆':'💪'}</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin:8px 0">${score}/${total}</div><button class="act-btn go" onclick="showPracTF()" style="margin-top:12px">שוב 🔄</button></div>`;return;}
@@ -1071,7 +1103,7 @@ function showPracTF(){const words=allLearnedWords();const b=document.getElementB
   }
   nextQ();
 }
-function showPracCatch(){const words=allLearnedWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
+function showPracCatch(){const words=gameFocusWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   let round=0,totalRounds=5,score=0;
   function nextRound(){
     b.innerHTML='';if(round>=totalRounds){b.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">${score>=4?'🏆':'💪'}</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin:8px 0">${score}/${totalRounds} תפיסות!</div><button class="act-btn go" onclick="showPracCatch()" style="margin-top:12px">שוב 🔄</button></div>`;return;}
@@ -1104,7 +1136,7 @@ function showPracCatch(){const words=allLearnedWords();const b=document.getEleme
   }
   nextRound();
 }
-function showPracSpeed(){const words=allLearnedWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<3){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
+function showPracSpeed(){const words=gameFocusWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<3){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   const qs=[];for(let i=0;i<8;i++){const w=words[Math.floor(Math.random()*words.length)];
     const wrongs=shuf(words.filter(x=>x.he!==w.he)).slice(0,2);const opts=[w.he, ...wrongs.map(x=>x.he)];qs.push({w:w.w,he:w.he,em:w.em||'📝',opts:shuf(opts)});}
   let qi=0,score=0,timeLeft=30;
