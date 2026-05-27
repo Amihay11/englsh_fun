@@ -1023,7 +1023,62 @@ function showMemoryGame(){
 let dictSort='group';
 function setDictSort(s){dictSort=s;document.querySelectorAll('.dict-sort-btn').forEach(b=>b.classList.toggle('on',b.dataset.sort===s));renderDict();}
 function showDict(){sw('scDict');setNav('bnDict');document.getElementById('dictSearch').value='';document.getElementById('dictSub').textContent=totalLearnedWords()+' מילים';renderDict();}
-function renderDict(){const b=document.getElementById('dictBody');b.innerHTML='';const q=(document.getElementById('dictSearch').value||'').toLowerCase();let learned=LETTERS.filter((_,i)=>getDone(i)>0);if(!learned.length){b.innerHTML='<div style="text-align:center;padding:30px;color:#bbb">עדיין לא למדת! 🚀</div>';return;}if(dictSort==='abc')learned=learned.slice().sort((a,b)=>a.L.localeCompare(b.L));const addSec=t=>{b.appendChild(mk('div','dict-sec-header',`<div class="dict-sec-title">${t}</div><div class="dict-sec-line"></div>`));};addSec('📖 אותיות ('+learnedCount()+')');let lg=0;learned.forEach(lt=>{const s=[lt.L,lt.l,lt.word,...lt.more.map(m=>m.w+' '+m.he)].join(' ').toLowerCase();if(q&&!s.includes(q))return;if(dictSort==='group'&&lt.grp!==lg){lg=lt.grp;if(!q)addSec(lt.gName);}const c=mk('div','dict-card');c.innerHTML=`<div class="dc-top"><div class="dc-letters"><div class="dc-big">${lt.L}</div><div class="dc-small">${lt.l}</div><div class="dc-snd">"${lt.sound}"</div></div><div class="dc-main"><div class="dc-em">${lt.wEm}</div><div class="dc-en">${lt.word}</div><div class="dc-phon">${lt.wPhon}</div><div class="dc-he">${lt.wHe}</div></div></div><div class="dc-extra">${lt.more.map(m=>`<div class="dc-chip">${m.em} ${m.w} <span style="color:#888;font-size:10px">${m.he}</span></div>`).join('')}</div>`;c.onclick=()=>speak(lt.word);b.appendChild(c);const dl=c.querySelector('.dc-letters');if(dl)dl.onclick=e=>{e.stopPropagation();speak(lt.L);};const dm=c.querySelector('.dc-main');if(dm)dm.onclick=e=>{e.stopPropagation();speak(lt.word);};c.querySelectorAll('.dc-chip').forEach((ch,ci)=>{ch.onclick=e=>{e.stopPropagation();if(lt.more[ci])speak(lt.more[ci].w);};});});if(!b.querySelector('.dict-card'))b.innerHTML='<div style="text-align:center;padding:20px;color:#bbb">לא נמצא</div>';}
+function renderDict(){
+  const b=document.getElementById('dictBody');b.innerHTML='';
+  const q=(document.getElementById('dictSearch').value||'').toLowerCase();
+  let learned=LETTERS.filter((_,i)=>getDone(i)>0);
+  const topicsLearned=THEMES.filter(t=>LS.tc&&LS.tc[t.id]>0);
+  const conceptsLearned=LANG_TIPS.filter(t=>(LS.tipsShown||[]).includes(t.id));
+  if(!learned.length&&!topicsLearned.length&&!conceptsLearned.length){b.innerHTML='<div style="text-align:center;padding:30px;color:#bbb">עדיין לא למדת! 🚀</div>';return;}
+  if(dictSort==='abc')learned=learned.slice().sort((a,b)=>a.L.localeCompare(b.L));
+  const addSec=t=>{b.appendChild(mk('div','dict-sec-header',`<div class="dict-sec-title">${t}</div><div class="dict-sec-line"></div>`));};
+  // ── Letters ──
+  const letterMatch=lt=>{const s=[lt.L,lt.l,lt.word,...lt.more.map(m=>m.w+' '+m.he)].join(' ').toLowerCase();return !q||s.includes(q);};
+  if(learned.some(letterMatch)){
+    addSec('📖 אותיות ('+learnedCount()+')');
+    let lg=0;
+    learned.forEach(lt=>{
+      if(!letterMatch(lt))return;
+      if(dictSort==='group'&&lt.grp!==lg){lg=lt.grp;if(!q)addSec(lt.gName);}
+      const c=mk('div','dict-card');
+      c.innerHTML=`<div class="dc-top"><div class="dc-letters"><div class="dc-big">${lt.L}</div><div class="dc-small">${lt.l}</div><div class="dc-snd">"${lt.sound}"</div></div><div class="dc-main"><div class="dc-em">${lt.wEm}</div><div class="dc-en">${lt.word}</div><div class="dc-phon">${lt.wPhon}</div><div class="dc-he">${lt.wHe}</div></div></div><div class="dc-extra">${lt.more.map(m=>`<div class="dc-chip">${m.em} ${m.w} <span style="color:#888;font-size:10px">${m.he}</span></div>`).join('')}</div>`;
+      c.onclick=()=>speak(lt.word);
+      b.appendChild(c);
+      const dl=c.querySelector('.dc-letters');if(dl)dl.onclick=e=>{e.stopPropagation();speak(lt.L);};
+      const dm=c.querySelector('.dc-main');if(dm)dm.onclick=e=>{e.stopPropagation();speak(lt.word);};
+      c.querySelectorAll('.dc-chip').forEach((ch,ci)=>{ch.onclick=e=>{e.stopPropagation();if(lt.more[ci])speak(lt.more[ci].w);};});
+    });
+  }
+  // ── Topics (נושאים) — tap to practice that topic ──
+  let topics=topicsLearned;
+  if(dictSort==='abc')topics=topics.slice().sort((a,b)=>a.title.localeCompare(b.title,'he'));
+  const topicMatch=t=>{const s=[t.title,...t.words.map(w=>w.w+' '+w.he)].join(' ').toLowerCase();return !q||s.includes(q);};
+  if(topics.some(topicMatch)){
+    addSec('🗂️ נושאים שלמדתי ('+topicsLearned.length+')');
+    topics.forEach(t=>{
+      if(!topicMatch(t))return;
+      const done=LS.tc[t.id]||0,total=t.words.length,full=done>=total;
+      const c=mk('div','dict-card topic-card');
+      c.innerHTML=`<div class="tc-row"><div class="tc-em" style="background:linear-gradient(135deg,${t.color},${t.color}aa)">${t.emoji}</div><div class="tc-info"><div class="tc-title">${t.title}</div><div class="tc-sub">${done}/${total} מילים${full?' ✓':''}</div></div><button class="tc-prac">🏋️ תרגול</button></div>`;
+      const go=e=>{if(e)e.stopPropagation();dictPracticeTopic(t.id);};
+      c.querySelector('.tc-prac').onclick=go;c.onclick=go;
+      b.appendChild(c);
+    });
+  }
+  // ── Concepts (מושגים) — grammar tips that were taught ──
+  const conceptMatch=t=>{const s=[t.title,t.tip,t.ex].join(' ').toLowerCase();return !q||s.includes(q);};
+  if(conceptsLearned.some(conceptMatch)){
+    addSec('💡 מושגים שלמדתי ('+conceptsLearned.length+')');
+    conceptsLearned.forEach(t=>{
+      if(!conceptMatch(t))return;
+      const c=mk('div','lang-tip dict-concept');
+      c.innerHTML=`<div class="lang-tip-title">${t.title}</div><div class="lang-tip-body">${t.tip}</div><div class="lang-tip-ex">💡 ${t.ex}</div>`;
+      b.appendChild(c);
+    });
+  }
+  if(!b.querySelector('.dict-card')&&!b.querySelector('.lang-tip'))b.innerHTML='<div style="text-align:center;padding:20px;color:#bbb">לא נמצא</div>';
+}
+function dictPracticeTopic(id){LS.practiceFocus.topics=[id];sLS();sw('scPrac');setNav('bnPrac');startFocusSession();}
 
 // ══ PROGRESS ══
 function showProgress(){sw('scProg');setNav('bnProg');const lc=learnedCount(),wc=totalLearnedWords(),ts=Object.values(LS.lc).reduce((a,s)=>a+s,0)+Object.values(LS.pc).reduce((a,s)=>a+s,0);const p=profiles.find(x=>x.id===activeId)||{name:'?',avatar:'😊'};const b=document.getElementById('progBody');b.innerHTML=`
