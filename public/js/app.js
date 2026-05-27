@@ -1049,7 +1049,7 @@ function renderDict(){
       c.querySelectorAll('.dc-chip').forEach((ch,ci)=>{ch.onclick=e=>{e.stopPropagation();if(lt.more[ci])speak(lt.more[ci].w);};});
     });
   }
-  // ── Topics (נושאים) — tap to practice that topic ──
+  // ── Topics (נושאים) — practice or games for that topic ──
   let topics=topicsLearned;
   if(dictSort==='abc')topics=topics.slice().sort((a,b)=>a.title.localeCompare(b.title,'he'));
   const topicMatch=t=>{const s=[t.title,...t.words.map(w=>w.w+' '+w.he)].join(' ').toLowerCase();return !q||s.includes(q);};
@@ -1059,9 +1059,9 @@ function renderDict(){
       if(!topicMatch(t))return;
       const done=LS.tc[t.id]||0,total=t.words.length,full=done>=total;
       const c=mk('div','dict-card topic-card');
-      c.innerHTML=`<div class="tc-row"><div class="tc-em" style="background:linear-gradient(135deg,${t.color},${t.color}aa)">${t.emoji}</div><div class="tc-info"><div class="tc-title">${t.title}</div><div class="tc-sub">${done}/${total} מילים${full?' ✓':''}</div></div><button class="tc-prac">🏋️ תרגול</button></div>`;
-      const go=e=>{if(e)e.stopPropagation();dictPracticeTopic(t.id);};
-      c.querySelector('.tc-prac').onclick=go;c.onclick=go;
+      c.innerHTML=`<div class="tc-row"><div class="tc-em" style="background:linear-gradient(135deg,${t.color},${t.color}aa)">${t.emoji}</div><div class="tc-info"><div class="tc-title">${t.title}</div><div class="tc-sub">${done}/${total} מילים${full?' ✓':''}</div></div><div class="tc-actions"><button class="tc-prac">🏋️ תרגול</button><button class="tc-games">🎮 משחקים</button></div></div>`;
+      c.querySelector('.tc-prac').onclick=e=>{e.stopPropagation();dictPracticeTopic(t.id);};
+      c.querySelector('.tc-games').onclick=e=>{e.stopPropagation();dictGamesTopic(t.id);};
       b.appendChild(c);
     });
   }
@@ -1079,6 +1079,7 @@ function renderDict(){
   if(!b.querySelector('.dict-card')&&!b.querySelector('.lang-tip'))b.innerHTML='<div style="text-align:center;padding:20px;color:#bbb">לא נמצא</div>';
 }
 function dictPracticeTopic(id){LS.practiceFocus.topics=[id];sLS();sw('scPrac');setNav('bnPrac');startFocusSession();}
+function dictGamesTopic(id){sw('scPrac');setNav('bnPrac');setGameFocus({type:'theme',id});}
 
 // ══ PROGRESS ══
 function showProgress(){sw('scProg');setNav('bnProg');const lc=learnedCount(),wc=totalLearnedWords(),ts=Object.values(LS.lc).reduce((a,s)=>a+s,0)+Object.values(LS.pc).reduce((a,s)=>a+s,0);const p=profiles.find(x=>x.id===activeId)||{name:'?',avatar:'😊'};const b=document.getElementById('progBody');b.innerHTML=`
