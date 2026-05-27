@@ -177,8 +177,10 @@ function startTopicLesson(topic){
   const words=topic.words;
   // One varied practice question per word — answer is never shown up front.
   const practice=shuf(words).map((w,i)=>{
-    let mode=['meaning','word','listen','scramble'][i%4];
-    if(mode==='scramble'&&(/[^A-Za-z]/.test(w.w)||w.w.length>6))mode='meaning';
+    let mode=['meaning','word','listen','truefalse','scramble','type','dictation'][i%7];
+    const oneWord=/^[A-Za-z]+$/.test(w.w);
+    if(mode==='scramble'&&(!oneWord||w.w.length>6))mode='meaning';
+    if((mode==='type'||mode==='dictation')&&(!oneWord||w.w.length>8))mode=mode==='type'?'word':'listen';
     return {mode,w};
   });
   const steps=[{mode:'learn'},...practice];
@@ -224,6 +226,27 @@ function startTopicLesson(topic){
     }
     draw();
   }
+  function renderTF(w,bdy,ds){
+    const isTrue=Math.random()>0.45,claim=isTrue?w.he:shuf(ds)[0].he;
+    bdy.appendChild(mk('div','mcq-prompt anim-slideUp','התרגום נכון?'));
+    bdy.appendChild(mk('div','tf-card anim-slideUp',`<div class="tf-word">${w.w}</div><div style="font-size:12px;color:#a855f7;margin:-2px 0 6px">📢 ${w.phon}</div><div class="tf-claim">= ${claim} ?</div><div class="tf-btns"><button class="tf-btn yes" id="tfY">✓ נכון</button><button class="tf-btn no-btn" id="tfN">✗ לא</button></div>`));
+    speak(w.w);
+    const go=said=>{if(stepDone)return;stepDone=true;const ok=said===isTrue;document.getElementById(said?'tfY':'tfN').classList.add(ok?'correct':'wrong');reward(ok,w);setTimeout(adv,ok?800:1250);};
+    document.getElementById('tfY').onclick=()=>go(true);
+    document.getElementById('tfN').onclick=()=>go(false);
+  }
+  function renderType(w,bdy,audio){
+    writeAttempts=0;
+    bdy.appendChild(mk('div','card center anim-slideUp',`<div class="mcq-prompt">${audio?'🎧 האזן וכתוב':'✍️ כתוב באנגלית'}</div><div style="font-size:52px;cursor:pointer" id="tHint">${audio?'🔊':w.em}</div><div style="font-size:13px;color:#a855f7">📢 ${w.phon}${audio?'':' · '+w.he}</div><div class="write-letter-row" id="tSlots"></div><div class="write-input-row"><input class="write-input" dir="ltr" id="tIn" placeholder="?" autocomplete="off" style="font-size:18px;letter-spacing:4px;"/><button class="write-check-btn" id="tChk">✓</button></div><div class="write-attempts" id="tAtt"></div>`));
+    const target=w.w,inp=document.getElementById('tIn');
+    const slots=()=>{const c=document.getElementById('tSlots');if(!c)return;c.innerHTML='';const t=inp.value;target.split('').forEach((ch,i)=>{const s=mk('div','write-letter-slot');const v=t[i]||'';if(v){if(v.toLowerCase()===ch.toLowerCase()){s.classList.add('done');s.textContent=ch;}else{s.classList.add('wrong');s.textContent=v;}}else if(i===t.length){s.classList.add('cur');s.textContent='_';}else s.textContent='_';c.appendChild(s);});};
+    document.getElementById('tHint').onclick=()=>{speak(w.w);SFX.play('click');};
+    slots();
+    inp.oninput=()=>{slots();if(inp.value.trim().toLowerCase()===target.toLowerCase()&&!stepDone){stepDone=true;inp.classList.add('ok-inp');reward(true,w);setTimeout(adv,800);}};
+    document.getElementById('tChk').onclick=()=>{if(stepDone||!inp.value)return;writeAttempts++;document.getElementById('tAtt').textContent='❌ '+writeAttempts;inp.classList.add('no-inp');setTimeout(()=>{inp.classList.remove('no-inp');inp.value='';slots();inp.focus();},600);if(writeAttempts>=3){stepDone=true;document.getElementById('tAtt').textContent='💡 '+target;reward(false,w);setTimeout(adv,1300);}};
+    if(audio)speak(w.w);
+    setTimeout(()=>inp.focus(),150);
+  }
   function render(){
     if(step>=steps.length){finish();return;}
     hud();
@@ -256,6 +279,12 @@ function startTopicLesson(topic){
       bdy.appendChild(mcqGrid(w,[{html:`<span style="font-size:30px">${w.em}</span><span class="opt-en">${w.w}</span>`,ok:true},...ds.map(d=>({html:`<span style="font-size:30px">${d.em}</span><span class="opt-en">${d.w}</span>`,ok:false}))]));
       document.getElementById('tSpk').onclick=()=>{speak(w.w);SFX.play('click');};
       speak(w.w);
+    }else if(s.mode==='truefalse'){
+      renderTF(w,bdy,ds);
+    }else if(s.mode==='type'){
+      renderType(w,bdy,false);
+    }else if(s.mode==='dictation'){
+      renderType(w,bdy,true);
     }else{
       renderScramble(w,bdy);
     }
