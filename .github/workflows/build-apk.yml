@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   push:
     branches:
-      - claude/rebuild-apk-latest-xUQGu
+      - master
     paths-ignore:
       - 'releases/**'
   workflow_dispatch:
