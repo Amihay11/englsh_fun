@@ -212,6 +212,20 @@ body{font-family:'Rubik',sans-serif;background:#f0f0ff;direction:rtl;overflow-x:
 .prac-score{display:flex;gap:20px;justify-content:center;background:white;border-radius:18px;padding:14px;box-shadow:0 2px 12px rgba(88,56,250,.07);}
 .psc{text-align:center;}.psc-n{font-size:28px;font-weight:900;}.psc-n.g{color:#58cc02;}.psc-n.r{color:#ff4b4b;}.psc-n.gr{color:#aaa;}
 .psc-l{font-size:11px;color:#bbb;margin-top:2px;}
+.prac-focus{background:white;border-bottom:2px solid #f0eeff;padding:8px 10px;display:flex;flex-direction:column;gap:7px;}
+.prac-focus.hidden{display:none;}
+.focus-label{font-size:11px;font-weight:700;color:#888;}
+.focus-row{display:flex;gap:7px;overflow-x:auto;padding-bottom:2px;}
+.focus-chip{padding:6px 13px;border-radius:20px;border:2px solid #e8e0ff;background:white;font-size:12px;font-weight:700;cursor:pointer;font-family:'Rubik',sans-serif;color:#666;white-space:nowrap;flex-shrink:0;}
+.focus-chip.on{background:#5838fa;color:white;border-color:#5838fa;}
+.focus-more-btn{padding:6px 13px;border-radius:20px;border:2px dashed #d0c8ec;background:transparent;font-size:11px;font-weight:700;cursor:pointer;font-family:'Rubik',sans-serif;color:#a89fd0;white-space:nowrap;flex-shrink:0;}
+.focus-more-title{font-size:10px;color:#bbb;font-weight:700;}
+.focus-more-row{display:flex;gap:7px;overflow-x:auto;padding:2px 0;}
+.focus-more-row .focus-chip{border-style:dashed;color:#999;}
+body.dark .prac-focus{background:#242442;border-color:#333;}
+body.dark .focus-label{color:#aaa;}
+body.dark .focus-chip{background:#242442;border-color:#444;color:#bbb;}
+body.dark .focus-chip.on{background:#5838fa;color:white;border-color:#5838fa;}
 
 /* Memory Game */
 .mem-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:4px;}

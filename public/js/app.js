@@ -35,7 +35,7 @@ async function loadLS(){
   LS.learnedWords=LS.learnedWords||{};LS.lastDay=LS.lastDay||null;LS.completedAt=LS.completedAt||{};
   LS.achievements=LS.achievements||[];LS.memWins=LS.memWins||0;LS.storiesDone=LS.storiesDone||0;
   LS.dailyDate=LS.dailyDate||null;LS.dailyDone=LS.dailyDone||false;
-  LS.srs=LS.srs||{};LS.tipsShown=LS.tipsShown||[];LS.themesDone=LS.themesDone||0;LS.fcDone=LS.fcDone||0;LS.sessionMistakes=[];
+  LS.srs=LS.srs||{};LS.tipsShown=LS.tipsShown||[];LS.themesDone=LS.themesDone||0;LS.fcDone=LS.fcDone||0;LS.sessionMistakes=[];LS.tc=LS.tc||{};
   LS.settings=LS.settings||{ttsSpeed:0.72,exercises:{intro:1,listen:1,write_letter:1,mcq_pic:1,dictation:1,write_word:1,mcq_letter:1,sentence:1},devMode:false,darkMode:false};
   if(LS.settings.darkMode)document.body.classList.add('dark');
 }
@@ -561,10 +561,11 @@ else{if(getDone(curIdx)<4)startLesson(curIdx);else{const n=curIdx+1;if(n<LETTERS
 // ══ PRACTICE ══
 let pracTab=0,pracQ=[],pracIdx=0,pracRight=0,pracWrong=0;
 function setPracTab(t){pracTab=t;for(let i=0;i<=10;i++){const el=document.getElementById('ptab'+i);if(el)el.classList.toggle('on',i===t);}
+  renderFocusBar();
   if(t===4){showMemoryGame();return;}if(t===5){showFlashcards();return;}if(t===6){showThemes();return;}
   if(t===7){showPracScramble();return;}if(t===8){showPracTF();return;}if(t===9){showPracCatch();return;}if(t===10){showPracSpeed();return;}
   buildPrac();renderPracQ();}
-function showPractice(){sw('scPrac');setNav('bnPrac');const started=LETTERS.filter((_,i)=>getDone(i)>0).length;document.getElementById('pracSub').textContent=learnedCount()+' אותיות · '+totalLearnedWords()+' מילים';if(started<2){document.getElementById('pracBody').innerHTML='<div style="text-align:center;padding:24px;font-size:48px">🔒</div><div style="text-align:center;font-weight:700;color:#5838fa">למד 2 אותיות קודם!</div>';return;}buildPrac();renderPracQ();}
+function showPractice(){sw('scPrac');setNav('bnPrac');const started=LETTERS.filter((_,i)=>getDone(i)>0).length;document.getElementById('pracSub').textContent=learnedCount()+' אותיות · '+totalLearnedWords()+' מילים';if(started<2){pracTab=0;renderFocusBar();document.getElementById('pracBody').innerHTML='<div style="text-align:center;padding:24px;font-size:48px">🔒</div><div style="text-align:center;font-weight:700;color:#5838fa">למד 2 אותיות קודם!</div>';return;}setPracTab(0);}
 // Pool of EVERY word the child has learned — letters (started), topics, and phrases.
 function allLearnedWords(){
   const map={};
@@ -573,6 +574,31 @@ function allLearnedWords(){
   return Object.values(map);
 }
 function writableLearnedWords(){const a=allLearnedWords().filter(x=>isWordWritable(x.w));return a.length?a:allLearnedWords();}
+// ══ FOCUSED PRACTICE (games) ══
+let pracFocus={type:'all'},focusMoreOpen=false;
+const FOCUS_TABS=[4,5,7,8,9,10];
+function allGroups(){const g={};LETTERS.forEach(lt=>{if(!g[lt.grp])g[lt.grp]={grp:lt.grp,gName:lt.gName,gColor:lt.gColor};});return Object.values(g).sort((a,b)=>a.grp-b.grp);}
+function learnedGroups(){return allGroups().filter(g=>LETTERS.some((lt,i)=>lt.grp===g.grp&&getDone(i)>0));}
+function groupWords(grp){const learnedAny=LETTERS.some((lt,i)=>lt.grp===grp&&getDone(i)>0);const out={};LETTERS.forEach((lt,i)=>{if(lt.grp!==grp)return;if(learnedAny&&getDone(i)<=0)return;[{w:lt.word,phon:lt.wPhon,he:lt.wHe,em:lt.wEm},...lt.more].forEach(x=>{const k=x.w.toLowerCase();if(!out[k])out[k]={w:x.w,phon:x.phon,he:x.he,em:x.em};});});return Object.values(out);}
+function isThemeLearned(th){if(LS.tc&&LS.tc[th.id]>0)return true;const known=th.words.filter(w=>LS.learnedWords[w.w.toLowerCase()]).length;return known>=Math.ceil(th.words.length*0.6);}
+function themeWords(th){return th.words.map(w=>({w:w.w,phon:w.phon,he:w.he,em:w.em}));}
+function focusWords(){if(pracFocus.type==='group')return groupWords(pracFocus.g);if(pracFocus.type==='theme'){const th=THEMES.find(t=>t.id===pracFocus.id);return th?themeWords(th):allLearnedWords();}return allLearnedWords();}
+function focusWritableWords(){const a=focusWords().filter(x=>isWordWritable(x.w));return a.length?a:focusWords();}
+function focusKey(f){return f.type+(f.g!=null?':'+f.g:'')+(f.id?':'+f.id:'');}
+function setPracFocus(f){pracFocus=f;setPracTab(pracTab);}
+function renderFocusBar(){const el=document.getElementById('pracFocus');if(!el)return;
+  if(!FOCUS_TABS.includes(pracTab)){el.classList.add('hidden');el.innerHTML='';return;}
+  el.classList.remove('hidden');el.innerHTML='';const cur=focusKey(pracFocus);
+  const mkChip=(label,f)=>{const c=mk('button','focus-chip'+(focusKey(f)===cur?' on':''),label);c.onclick=()=>setPracFocus(f);return c;};
+  el.appendChild(mk('div','focus-label','🎯 תרגול ממוקד:'));
+  const row=mk('div','focus-row');row.appendChild(mkChip('🌟 הכל',{type:'all'}));
+  THEMES.filter(isThemeLearned).forEach(th=>row.appendChild(mkChip(th.emoji+' '+th.title,{type:'theme',id:th.id})));
+  learnedGroups().forEach(g=>row.appendChild(mkChip('🔤 '+g.gName,{type:'group',g:g.grp})));
+  const lg=learnedGroups(),unlThemes=THEMES.filter(th=>!isThemeLearned(th)),unlGroups=allGroups().filter(g=>!lg.some(x=>x.grp===g.grp));
+  if(unlThemes.length||unlGroups.length){const mb=mk('button','focus-more-btn',focusMoreOpen?'הסתר ✕':'➕ עוד');mb.onclick=()=>{focusMoreOpen=!focusMoreOpen;renderFocusBar();};row.appendChild(mb);}
+  el.appendChild(row);
+  if(focusMoreOpen&&(unlThemes.length||unlGroups.length)){el.appendChild(mk('div','focus-more-title','נושאים שעוד לא למדת:'));const mr=mk('div','focus-more-row');unlThemes.forEach(th=>mr.appendChild(mkChip(th.emoji+' '+th.title,{type:'theme',id:th.id})));unlGroups.forEach(g=>mr.appendChild(mkChip('🔤 '+g.gName,{type:'group',g:g.grp})));el.appendChild(mr);}
+}
 function buildPrac(){
   const l=LETTERS.filter((_,i)=>getDone(i)>0);pracQ=[];pracIdx=0;pracRight=0;pracWrong=0;if(l.length<2)return;
   const wWords=writableLearnedWords();
@@ -593,7 +619,7 @@ function pSentP({sentence:s},b){if(!s){pracIdx++;renderPracQ();return;}stepDone=
 // ══ MEMORY GAME ══
 function showMemoryGame(){
   const b=document.getElementById('pracBody');b.innerHTML='';
-  const words=allLearnedWords();
+  const words=focusWords();
   if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   const pick=shuf(words).slice(0,6);
   let cards=[];pick.forEach((w,wi)=>{const key='m'+wi;cards.push({match:key,type:'en',em:w.em||'📝',txt:w.w.toLowerCase()});cards.push({match:key,type:'he',em:'',txt:w.he});});
@@ -694,10 +720,10 @@ async function playBilNext(els){
 // ══ FLASHCARDS TAB ══
 function showFlashcards(){
   const b=document.getElementById('pracBody');b.innerHTML='';
-  const allW=Object.values(LS.learnedWords);
+  const allW=focusWords();
   if(allW.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים! 📚</div>';return;}
-  // Prioritize weak words
-  const weak=getWeakWords(10);const pool=weak.length>=4?allW.filter(w=>weak.includes(w.w.toLowerCase())):shuf(allW).slice(0,8);
+  // Prioritize weak words within the focused pool
+  const weakSet=new Set(getWeakWords(30));const weakInFocus=allW.filter(w=>weakSet.has(w.w.toLowerCase()));const pool=weakInFocus.length>=4?weakInFocus:shuf(allW).slice(0,8);
   let idx=0;
   function renderCard(){
     b.innerHTML='';
@@ -786,7 +812,7 @@ function startReviewSession(words){
 // Override rStoryRead to use bilingual TTS
 
 // ══ PRACTICE GAMES ══
-function showPracScramble(){const words=writableLearnedWords().filter(x=>/^[A-Za-z]+$/.test(x.w));const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<2){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
+function showPracScramble(){const words=focusWritableWords().filter(x=>/^[A-Za-z]+$/.test(x.w));const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<2){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   let qi=0,total=6,score=0;
   function nextQ(){
     b.innerHTML='';if(qi>=total){b.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">${score>=4?'🏆':'💪'}</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin:8px 0">${score}/${total}</div><button class="act-btn go" onclick="showPracScramble()" style="margin-top:12px">שוב 🔄</button></div>`;return;}
@@ -804,7 +830,7 @@ function showPracScramble(){const words=writableLearnedWords().filter(x=>/^[A-Za
   }
   nextQ();
 }
-function showPracTF(){const words=allLearnedWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
+function showPracTF(){const words=focusWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   let qi=0,total=8,score=0;
   function nextQ(){
     b.innerHTML='';if(qi>=total){b.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">${score>=6?'🏆':'💪'}</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin:8px 0">${score}/${total}</div><button class="act-btn go" onclick="showPracTF()" style="margin-top:12px">שוב 🔄</button></div>`;return;}
@@ -818,7 +844,7 @@ function showPracTF(){const words=allLearnedWords();const b=document.getElementB
   }
   nextQ();
 }
-function showPracCatch(){const words=allLearnedWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
+function showPracCatch(){const words=focusWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<4){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   let round=0,totalRounds=5,score=0;
   function nextRound(){
     b.innerHTML='';if(round>=totalRounds){b.innerHTML=`<div style="text-align:center;padding:24px;"><div style="font-size:56px">${score>=4?'🏆':'💪'}</div><div style="font-size:18px;font-weight:700;color:#5838fa;margin:8px 0">${score}/${totalRounds} תפיסות!</div><button class="act-btn go" onclick="showPracCatch()" style="margin-top:12px">שוב 🔄</button></div>`;return;}
@@ -851,7 +877,7 @@ function showPracCatch(){const words=allLearnedWords();const b=document.getEleme
   }
   nextRound();
 }
-function showPracSpeed(){const words=allLearnedWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<3){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
+function showPracSpeed(){const words=focusWords();const b=document.getElementById('pracBody');b.innerHTML='';if(words.length<3){b.innerHTML='<div style="text-align:center;padding:24px;font-weight:700;color:#5838fa">למד עוד מילים קודם! 📚</div>';return;}
   const qs=[];for(let i=0;i<8;i++){const w=words[Math.floor(Math.random()*words.length)];
     const wrongs=shuf(words.filter(x=>x.he!==w.he)).slice(0,2);const opts=[w.he, ...wrongs.map(x=>x.he)];qs.push({w:w.w,he:w.he,em:w.em||'📝',opts:shuf(opts)});}
   let qi=0,score=0,timeLeft=30;
